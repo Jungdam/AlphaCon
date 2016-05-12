@@ -1,3 +1,0 @@
-numFrames 0
-numSkeletons 1
-Skeleton0 24 

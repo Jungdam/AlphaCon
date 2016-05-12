@@ -1,0 +1,102 @@
+<?xml version="1.0"?>
+<robot name="ground_skeleton">
+    <link name="world" />
+    <link name="left">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 15 0.5" />
+                <mesh filename="ring.STL" scale="1 1 1" />
+            </geometry>
+        </visual>
+        <collision group="default">
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 15 0.5" />
+                <!-- <mesh filename="ring.STL" scale="1 1 1" /> -->
+            </geometry>
+        </collision>
+    </link>
+    <link name="right">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 15 0.5" />
+            </geometry>
+        </visual>
+        <collision group="default">
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 15 0.5" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="top">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 5 0.5" />
+            </geometry>
+        </visual>
+        <collision group="default">
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 5 0.5" />
+            </geometry>
+        </collision>
+    </link>
+    <link name="bottom">
+        <inertial>
+            <mass value="1.0" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 5 0.5" />
+            </geometry>
+        </visual>
+        <collision group="default">
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <box size="5 5 0.5" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="world_bottom" type="fixed">
+        <origin xyz="0 0 5" rpy="0 0 0" />
+        <parent link="world" />
+        <child link="bottom" />
+    </joint>
+    <joint name="bottom_left" type="fixed">
+        <origin xyz="-5 5 0" rpy="0 0 0" />
+        <parent link="bottom" />
+        <child link="left" />
+    </joint>
+    <joint name="bottom_right" type="fixed">
+        <origin xyz="5 5 0" rpy="0 0 0" />
+        <parent link="bottom" />
+        <child link="right" />
+    </joint>
+    <joint name="bottom_top" type="fixed">
+        <origin xyz="0 10 0" rpy="0 0 0" />
+        <parent link="bottom" />
+        <child link="top" />
+    </joint>
+</robot>

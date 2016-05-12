@@ -12,9 +12,11 @@ import aerodynamics
 import myworld
 import multiprocessing
 from multiprocessing import Process, Queue
+import view
 
 dt = 1.0/600.0
-skel_file = '/home/jungdam/Research/pydart/apps/turtle/data/skel/turtle.skel'
+turtle_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
+wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
 
 print('Example: turtle')
 
@@ -27,10 +29,12 @@ state['Force'] = np.zeros(3)
 state['ImpulseDuration'] = 0
 state['DrawAeroForce'] = True
 state['DrawGround'] = True
-state['DrawJoint'] = True
+state['DrawJoint'] = False
 state['EnableAerodynamics'] = True
 
 aero_force = []
+
+myView = view.View()
 
 def apply_aerodynamics(skel):
     aero_force = []
@@ -233,6 +237,14 @@ def keyboard_callback(world, key):
     elif key == 's':
         print('save world')
         world.save('test_world.txt')
+    elif key == '0':
+        print('test')
+        # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
+        #                         rot=[-0.05, 0.07, -0.01, 1.00],
+        #                         trans=[0.02, 0.09, -3.69])
+        # pydart.glutgui.set_trackball(tb)
+        myView.setup_texture()
+        myView.update()
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -268,7 +280,8 @@ def keyboard_callback(world, key):
         # cma.pprint(es.result())
         print('-----------End Optimization-------------')
 
-world = pydart.create_world(dt, skel_file)
+world = pydart.create_world(dt, turtle_file)
+world.add_skeleton(wall_file)
 skel = world.skels[0]
 skel.controller = controller.Controller(skel, dt)
 
@@ -282,7 +295,10 @@ if False:#'qt' in sys.argv:
                      keyboard_callback=keyboard_callback,
                      render_callback=render_callback)
 else:
-    pydart.glutgui.run(title='turtle', simulation=world, trans=[0, 0, -5],
+    # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
+    #                             rot=[-0.05, 0.07, -0.01, 1.00],
+    #                             trans=[0.02, 0.09, -3.69])
+    pydart.glutgui.run(title='turtle', simulation=world, trans=[0, 0, -30],
                        step_callback=step_callback,
                        keyboard_callback=keyboard_callback,
                        render_callback=render_callback)

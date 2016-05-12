@@ -32,7 +32,7 @@
                 <parent>world</parent>
                 <child>ground</child>
             </joint>
-        </skeleton>	 -->
+        </skeleton>  -->
 
         <skeleton name="turtle">
 
@@ -286,48 +286,6 @@
                 <!-- <init_pos>0 0 0</init_pos> -->
                 <init_vel>0 0 0</init_vel>
             </joint>
-
-        </skeleton>	
-
-        <skeleton name="walls">
-
-            <transformation>0 0 0 0 0 0</transformation>
-
-            <!-- Body: Wall0 -->
-            <body name="wall0">
-                <transformation>0 0 5 0 0 0</transformation>
-                <inertia>
-                    <mass>1000.0</mass>
-                    <offset>0.0 0 0.0</offset>
-                </inertia>
-                <visualization_shape>
-                    <transformation>0.0 0 0.0 0 0 0</transformation>
-                    <geometry>
-                        <box>
-                            <size>20 20 1</size>
-                        </box>
-                        <!-- <mesh>
-                            <file_name>head.dae</file_name>
-                            <scale>1.0</scale>
-                        </mesh> -->
-                    </geometry>
-                </visualization_shape>
-                <collision_shape>
-                    <transformation>0.0 0 0.0 0 0 0</transformation>
-                    <geometry>
-                        <box>
-                            <size>20 20 1.0</size>
-                        </box>
-                    </geometry>
-                </collision_shape>                                
-            </body>
-
-            <!-- JOINT: Wall0 -->
-            <joint type="weld" name="j_trunk">
-                <transformation>-0.425 0.0 0.0 0.0 0.0 0.0</transformation>
-                <parent>world</parent>
-                <child>wall0</child>
-            </joint>            
 
         </skeleton> 
 

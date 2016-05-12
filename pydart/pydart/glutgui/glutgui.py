@@ -4,7 +4,6 @@ from OpenGL.GLU import *
 import sys
 import numpy as np
 import time
-
 import trackball
 
 # Some api in the chain is translating the keystrokes to this octal string
@@ -95,6 +94,7 @@ def drawGL():
     # Clear The Screen And The Depth Buffer
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()					# Reset The View
+    
     global tb
     glTranslate(*tb.trans)
     glMultMatrixf(tb.matrix)
@@ -114,9 +114,9 @@ def drawGL():
                 glVertex3d(*c.p)
                 glVertex3d(*(c.p - 0.01 * c.f))
                 glEnd()
-
     else:
         glutSolidSphere(0.3, 4, 4)  # Default object
+
     if render_callback_func is not None:
         render_callback_func()
 
@@ -152,7 +152,6 @@ def keyPressed(*args):
             sim.set_frame(int(state['index']))
             print('%d / %d' % (state['index'], n))
 
-
 def mouseFunc(button, state, x, y):
     global mouseLastPos
     if state == 0:  # Mouse pressed
@@ -160,6 +159,10 @@ def mouseFunc(button, state, x, y):
     elif state == 1:
         mouseLastPos = None
 
+    if button == 3:
+        tb.zoom_to(10.0,10.0)
+    elif button == 4:
+        tb.zoom_to(-10.0,-10.0)
 
 def motionFunc(x, y):
     global mouseLastPos
@@ -169,30 +172,29 @@ def motionFunc(x, y):
     tb.drag_to(x, y, dx, -dy)
     mouseLastPos = np.array([x, y])
 
-
 def idle():
     global sim
     global pd
     global state
     global timer_start
 
-    delta = time.time() - timer_start
-    if delta < sim.dt:
-        return
-
-    if sim is not None and state['simulate']:
-        global step_callback_func
-        num_iter = max(1,int(delta/sim.dt))
-        for i in range(num_iter):
-            if step_callback_func is not None:
-                step_callback_func(sim)
-            sim.step()
-    if sim is not None and state['play']:
-        n = sim.num_frames()
-        state['index'] = (state['index'] + 0.01)
-        if int(state['index']) >= n:
-            state['index'] = 0
-        sim.set_frame(int(state['index']))
+    if sim is not None:
+        delta = time.time() - timer_start
+        if delta < sim.dt:
+            return
+        if state['simulate']:
+            global step_callback_func
+            num_iter = max(1,int(delta/sim.dt))
+            for i in range(num_iter):
+                if step_callback_func is not None:
+                    step_callback_func(sim)
+                sim.step()
+        if state['play']:
+            n = sim.num_frames()
+            state['index'] = (state['index'] + 0.01)
+            if int(state['index']) >= n:
+                state['index'] = 0
+            sim.set_frame(int(state['index']))
 
     timer_start = time.time()
 
@@ -257,3 +259,7 @@ def run(title='GLUT Window', simulation=None, trans=None,
 
 if __name__ == '__main__':
     run()
+
+def set_trackball(trackball):
+    global tb
+    tb = trackball

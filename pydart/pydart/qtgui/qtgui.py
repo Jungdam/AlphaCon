@@ -8,7 +8,6 @@ from glwidget import GLWidget
 from trackball import Trackball
 from OpenGL.GLUT import glutInit
 
-
 def signal_handler(signal, frame):
     print 'You pressed Ctrl+C! Bye.'
     sys.exit(0)
