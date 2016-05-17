@@ -89,10 +89,10 @@ def resizeGL(w, h):
     gluPerspective(45.0, float(w) / float(h), 0.1, 100.0)
     glMatrixMode(GL_MODELVIEW)
 
-
 def drawGL():
     # Clear The Screen And The Depth Buffer
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()					# Reset The View
     
     global tb

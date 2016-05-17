@@ -5,22 +5,26 @@ from OpenGL.GL.ARB.depth_texture import *
 from OpenGL.GL.ARB.shadow import *
 from OpenGL.GL.framebufferobjects import *
 import numpy as np
-from scipy import ndimage
+import mmMath
+import myworld
 from PIL import Image
 import math
 import os
 import time
 import traceback
-import Image
+
+EPS = 1E-6
 
 class View:
-	def __init__(self, w=100, h=100, fov=45.0):
+	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=100, world=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
-		self.v_pos = np.array([0,0,0])
-		self.v_look = np.array([0,0,10])
-		self.v_up = np.array([0,1,0])
+		self.aspect = float(w)/float(h)
+		self.near = near
+		self.far = far
+		self.world = world
+		self.frame = mmMath.I_SE3()
 		self.fbo = None
 		self.texture = None
 		self.image = None
@@ -35,7 +39,10 @@ class View:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, self.w, self.h, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, None)
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, self.texture, 0)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0)
-	def update(self):
+	def update(self, frame=None):
+		if frame is not None:
+			self.set_frame(frame)
+		# Setup gl functions for rendering depth buffer 
 		glDepthFunc(GL_LEQUAL)
 		glEnable(GL_DEPTH_TEST)
 		glPushAttrib(GL_VIEWPORT_BIT)
@@ -55,22 +62,29 @@ class View:
 			traceback.print_exc() 
 			os._exit(1)
 		glClear(GL_DEPTH_BUFFER_BIT)
+		# Projection matrix setup
 		glMatrixMode(GL_PROJECTION)
 		glPushMatrix()
 		glLoadIdentity()
-		gluPerspective(45.0, 1.0, 1.0, 1000.0)
-		glTranslatef(0,0, -10)
-
+		gluPerspective(self.fov, self.aspect, self.near, self.far)
+		# Modelview matrix setup
+		# Calcuate camera transformation from current frame
 		glMatrixMode( GL_MODELVIEW )
 		glPushMatrix()
-		glLoadIdentity()
-		glTranslatef(0,2.0,0)
-		glutSolidSphere(1.0, 10, 10)
+		glLoadIdentity()		
+		[R,t] = mmMath.T2Rp(self.frame)
+		axis = mmMath.logSO3(R)
+		angle = np.linalg.norm(axis)
+		if angle > EPS:
+			axis = axis/angle
+		glTranslatef(t[0],t[1],t[2])
+		glRotatef(180.0,0,1,0)
+		glRotatef(mmMath.DEG*angle,axis[0],axis[1],axis[2])
+		self.render_callback()
 		glPopMatrix()
 
 		glMatrixMode(GL_PROJECTION)
 		glPopMatrix()
-		glMatrixMode( GL_MODELVIEW )
 
 		data = glReadPixels(0, 0, self.w, self.h,  GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE)
 		self.image = Image.fromstring('L', (self.w, self.h), data)
@@ -83,6 +97,8 @@ class View:
 		self.test()
 	def test(self):
 		print 'a'
+	def set_frame(self, frame):
+		self.frame = frame
 	# def get_depth_image(self):
 	# 	glViewport(0, 0, self.w, self.h)
 	    
@@ -102,3 +118,7 @@ class View:
 	def set_size(self, w, h):
 		self.w = w
 		self.h = h
+	def render_callback(self):
+		if self.world is None:
+			return
+		self.world.render()

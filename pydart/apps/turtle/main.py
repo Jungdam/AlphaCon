@@ -15,7 +15,7 @@ from multiprocessing import Process, Queue
 import view
 
 dt = 1.0/600.0
-turtle_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
+skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
 
 print('Example: turtle')
@@ -33,8 +33,6 @@ state['DrawJoint'] = False
 state['EnableAerodynamics'] = True
 
 aero_force = []
-
-myView = view.View()
 
 def apply_aerodynamics(skel):
     aero_force = []
@@ -244,7 +242,7 @@ def keyboard_callback(world, key):
         #                         trans=[0.02, 0.09, -3.69])
         # pydart.glutgui.set_trackball(tb)
         myView.setup_texture()
-        myView.update()
+        myView.update(skel.body('trunk').T)
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -280,10 +278,12 @@ def keyboard_callback(world, key):
         # cma.pprint(es.result())
         print('-----------End Optimization-------------')
 
-world = pydart.create_world(dt, turtle_file)
+world = pydart.create_world(dt, skel_file)
 world.add_skeleton(wall_file)
 skel = world.skels[0]
 skel.controller = controller.Controller(skel, dt)
+
+myView = view.View(world=world)
 
 # Run the application
 if False:#'qt' in sys.argv:
