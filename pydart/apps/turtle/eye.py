@@ -15,7 +15,7 @@ import traceback
 
 EPS = 1E-6
 
-class View:
+class Eye:
 	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=100, world=None):
 		self.w = w
 		self.h = h
@@ -28,7 +28,10 @@ class View:
 		self.fbo = None
 		self.texture = None
 		self.image = None
+		self.setup = False
 	def setup_texture(self):
+		if self.setup:
+			return
 		if not glBindFramebuffer:
 			print('Missing required extensions!')
 			sys.exit( testingcontext.REQUIRED_EXTENSION_MISSING )
@@ -39,7 +42,10 @@ class View:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, self.w, self.h, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, None)
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, self.texture, 0)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0)
+		self.setup = True
 	def update(self, frame=None):
+		if self.setup is False:
+			self.setup_texture()
 		if frame is not None:
 			self.set_frame(frame)
 		# Setup gl functions for rendering depth buffer 
@@ -72,12 +78,12 @@ class View:
 		glMatrixMode( GL_MODELVIEW )
 		glPushMatrix()
 		glLoadIdentity()		
-		[R,t] = mmMath.T2Rp(self.frame)
+		[R,p] = mmMath.T2Rp(self.frame)
 		axis = mmMath.logSO3(R)
 		angle = np.linalg.norm(axis)
 		if angle > EPS:
 			axis = axis/angle
-		glTranslatef(t[0],t[1],t[2])
+		glTranslatef(p[0],p[1],p[2])
 		glRotatef(180.0,0,1,0)
 		glRotatef(mmMath.DEG*angle,axis[0],axis[1],axis[2])
 		self.render_callback()
@@ -89,16 +95,16 @@ class View:
 		data = glReadPixels(0, 0, self.w, self.h,  GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE)
 		self.image = Image.fromstring('L', (self.w, self.h), data)
 		self.image = self.image.transpose(Image.FLIP_TOP_BOTTOM)
-		self.image.save("test.png")
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0)
 		glDrawBuffer(GL_BACK)
 		glPopAttrib()
-		self.test()
 	def test(self):
 		print 'a'
 	def set_frame(self, frame):
 		self.frame = frame
+	def save_image(self, filename):
+		self.image.save(filename)
 	# def get_depth_image(self):
 	# 	glViewport(0, 0, self.w, self.h)
 	    

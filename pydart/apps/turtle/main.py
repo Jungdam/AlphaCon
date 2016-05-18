@@ -12,7 +12,7 @@ import aerodynamics
 import myworld
 import multiprocessing
 from multiprocessing import Process, Queue
-import view
+import eye
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -117,7 +117,7 @@ def step_callback(world):
         apply_aerodynamics(world.skels[0])
 
     if world.skels[0].controller.is_new_wingbeat():
-        print world.skels[0].body('trunk').world_com_velocity()
+        print 'velocity: ', world.skels[0].body('trunk').world_com_velocity()
 
     # print 'time: ', world.time()
 
@@ -235,14 +235,16 @@ def keyboard_callback(world, key):
     elif key == 's':
         print('save world')
         world.save('test_world.txt')
+    elif key == 'r':
+        world.reset()
+        controller.reset()
     elif key == '0':
         print('test')
         # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
         #                         rot=[-0.05, 0.07, -0.01, 1.00],
         #                         trans=[0.02, 0.09, -3.69])
         # pydart.glutgui.set_trackball(tb)
-        myView.setup_texture()
-        myView.update(skel.body('trunk').T)
+        eye.update(skel.body('trunk').T)
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -281,9 +283,7 @@ def keyboard_callback(world, key):
 world = pydart.create_world(dt, skel_file)
 world.add_skeleton(wall_file)
 skel = world.skels[0]
-skel.controller = controller.Controller(skel, dt)
-
-myView = view.View(world=world)
+skel.controller = controller.Controller(world, skel, eye.Eye(world=world))
 
 # Run the application
 if False:#'qt' in sys.argv:
