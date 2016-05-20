@@ -105,6 +105,10 @@ class Eye:
 		self.frame = frame
 	def save_image(self, filename):
 		self.image.save(filename)
+	def get_image(self):
+		return self.image
+	def get_image_size(self):
+		return (self.w, self.h)
 	# def get_depth_image(self):
 	# 	glViewport(0, 0, self.w, self.h)
 	    

@@ -112,12 +112,13 @@ def obj_func(q, idx, world, param):
     q.put([idx, val])
 
 def step_callback(world):
-
+    skel = world.skels[0]
     if state['EnableAerodynamics']:
-        apply_aerodynamics(world.skels[0])
-
-    if world.skels[0].controller.is_new_wingbeat():
-        print 'velocity: ', world.skels[0].body('trunk').world_com_velocity()
+        apply_aerodynamics(skel)
+    if skel.controller.is_new_wingbeat():
+        print 'action: ', skel.controller.get_action()
+        print 'state: ', skel.controller.get_state()
+        print 'velocity: ', skel.body('trunk').world_com_velocity()
 
     # print 'time: ', world.time()
 
