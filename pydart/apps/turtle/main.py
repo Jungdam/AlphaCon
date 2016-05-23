@@ -13,6 +13,7 @@ import myworld
 import multiprocessing
 from multiprocessing import Process, Queue
 import eye
+import deepRL
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -238,14 +239,23 @@ def keyboard_callback(world, key):
         world.save('test_world.txt')
     elif key == 'r':
         world.reset()
-        controller.reset()
+        skel.controller.reset()
+    elif key == 'd':
+        if deepRL.has_model is False:
+            deepRL.create_model()
+        print deepRL.step()
     elif key == '0':
         print('test')
         # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
         #                         rot=[-0.05, 0.07, -0.01, 1.00],
         #                         trans=[0.02, 0.09, -3.69])
         # pydart.glutgui.set_trackball(tb)
+        eye = skel.controller.get_eye()
         eye.update(skel.body('trunk').T)
+        im = eye.get_image()
+        print type(im)
+        print im
+        np.savetxt('test.txt', im)
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -285,6 +295,8 @@ world = pydart.create_world(dt, skel_file)
 world.add_skeleton(wall_file)
 skel = world.skels[0]
 skel.controller = controller.Controller(world, skel, eye.Eye(world=world))
+
+deepRL = deepRL.DeepRL(world, skel)
 
 # Run the application
 if False:#'qt' in sys.argv:

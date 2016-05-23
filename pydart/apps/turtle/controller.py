@@ -87,6 +87,9 @@ class Controller:
             state.append(np.dot(R_trunk_inv,l))
         return np.array(state).flatten().tolist()
     def get_eye(self):
+        if self.eye is not None:
+            self.eye.update(self.skel.body('trunk').T)
+            # self.eye.save_image('image'+str(self.cnt_wingbeat)+'.png')
         return self.eye
     def reset_tau_sum(self):
         self.tau_sum = 0.0
@@ -109,27 +112,6 @@ class Controller:
 
         return value
     def update_target_pose(self):
-        # Check if wheather new wingbeat 
-        self.time += self.skel.world.dt
-        if self.time > self.action[-1][2]:
-            self.time = 0.0
-            self.new_wingbeat = True
-            self.cnt_wingbeat += 1
-            if self.eye is not None:
-                self.eye.update(self.skel.body('trunk').T)
-                # self.eye.save_image('image'+str(self.cnt_wingbeat)+'.png')
-            if False and self.cnt_wingbeat > 2:
-                noiseL = np.random.uniform(-0.5, 0.5, size=len(self.action_default[0]))
-                noiseR = np.random.uniform(-0.5, 0.5, size=len(self.action_default[1]))
-                noiseT = np.random.uniform(-0.5, 0.5, size=1)
-                l = np.array(self.action_default[0]) + noiseL
-                r = np.array(self.action_default[1]) + noiseR
-                t = np.array(self.action_default[2]) + noiseT
-                action = [l.tolist(),r.tolist(),t[0]]
-                self.add_action(action)
-        else:
-            self.new_wingbeat = False
-
         # Generate a current target posture
         action_before = self.action[-2]
         action_cur = self.action[-1]
@@ -155,6 +137,16 @@ class Controller:
                 self.qhat["j_arm_right_x"] = self.qhat_init["j_arm_right_x"] + c1
                 self.qhat["j_arm_right_y"] = self.qhat_init["j_arm_right_y"] + c2
                 self.qhat["j_arm_right_z"] = self.qhat_init["j_arm_right_z"] + c3
+
+        # Check if wheather new wingbeat 
+        self.time += self.skel.world.dt
+        if self.time > action_cur[2]:
+            self.time = 0.0
+            self.new_wingbeat = True
+            self.cnt_wingbeat += 1
+        else:
+            self.new_wingbeat = False
+
     def compute(self):
 
         self.update_target_pose()

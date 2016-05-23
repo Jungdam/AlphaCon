@@ -106,7 +106,9 @@ class Eye:
 	def save_image(self, filename):
 		self.image.save(filename)
 	def get_image(self):
-		return self.image
+		im = np.asarray(self.image,dtype=np.float32)
+		im /= 255.0
+		return im
 	def get_image_size(self):
 		return (self.w, self.h)
 	# def get_depth_image(self):
