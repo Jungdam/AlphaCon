@@ -122,7 +122,13 @@ def drawGL():
 
     glutSwapBuffers()
 
-
+def play(val=None):
+    if val is None:
+        state['simulate'] = not state['simulate']
+    else:
+        state['simulate'] = val
+    if state['simulate']:
+        timer_start = time.time()
 # The function called whenever a key is pressed.
 # Note the use of Python tuples to pass in: (key, x, y)
 def keyPressed(*args):
@@ -135,9 +141,7 @@ def keyPressed(*args):
         glutDestroyWindow(window)
         sys.exit()
     elif args[0] == ' ':
-        state['simulate'] = not state['simulate']
-        if state['simulate']:
-            timer_start = time.time()
+        play()
     elif args[0] == 'p':
         state['play'] = not state['play']
     elif args[0] == ']':

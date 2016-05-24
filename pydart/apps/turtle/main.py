@@ -34,6 +34,10 @@ state['DrawGround'] = True
 state['DrawJoint'] = False
 state['EnableAerodynamics'] = True
 state['DrawScene'] = True
+state['DeepControl'] = False
+state['DeepTrainning'] = False
+state['DeepTrainningResultShowCnt'] = 3
+state['DeepTrainningResultShowMax'] = 3
 
 aero_force = []
 
@@ -118,10 +122,40 @@ def step_callback(world):
     skel = world.skels[0]
     if state['EnableAerodynamics']:
         apply_aerodynamics(skel)
-    if skel.controller.is_new_wingbeat():
-        print 'action: ', skel.controller.get_action()
-        print 'state: ', skel.controller.get_state()
-        print 'velocity: ', skel.body('trunk').world_com_velocity()
+    
+    # if skel.controller.is_new_wingbeat():
+    #     print 'action: ', skel.controller.get_action()
+    #     print 'state: ', skel.controller.get_state()
+    #     print 'velocity: ', skel.body('trunk').world_com_velocity()
+
+    if state['DeepTrainning']:
+        print '[DeepTrainning]'
+        deepRL.run(5, 10)
+        state['DeepTrainning'] = False
+        state['DeepControl'] = True
+        world.reset()
+        skel.controller.reset()
+        scene.perturbate()
+
+    if state['DeepControl']:
+        if skel.controller.is_new_wingbeat():
+            print '[DeepControl]', '\tnew action!!!'
+            skel.controller.get_eye().update(skel.body('trunk').T)
+            state_eye = skel.controller.get_eye().get_image()
+            state_skel = skel.controller.get_state()
+            action = deepRL.eval_action(state_eye,state_skel, skel.controller.get_action_default())
+            skel.controller.add_action(action)
+            if skel.controller.get_num_wingbeat() >= 5:
+                world.reset()
+                skel.controller.reset()
+                scene.perturbate()
+                show_cnt = state['DeepTrainningResultShowCnt']
+                show_cnt -= 1
+                if show_cnt <= 0:
+                    show_cnt = state['DeepTrainningResultShowMax']
+                state['DeepTrainning'] = True
+                state['DeepControl'] = False
+                state['DeepTrainningResultShowCnt'] = show_cnt
 
     scene.update(skel.body('trunk').T, 1.0)
 
@@ -262,11 +296,17 @@ def keyboard_callback(world, key):
         # print deepRL.eval_action(state_eye,state_skel)
         # print deepRL.eval_qvalue(state_eye,state_skel)
 
-        data = []
-        for i in range(10):
-            print i
-            data.append(deepRL.step())
-        deepRL.update_model(data)
+        # data = []
+        # for i in range(1):
+        #     print i
+        #     data.append(deepRL.step())
+        # deepRL.update_model(data)
+
+        # deepRL.run(10, 10)
+        state['DeepTrainning'] = True
+        state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
+        pydart.glutgui.play(True)
+
     elif key == 'p':
         scene.perturbate()
     elif key == '0':

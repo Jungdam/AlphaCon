@@ -17,23 +17,24 @@ def _flatten_(*args):
 def weight_variable(shape):
   initial = tf.truncated_normal(shape, stddev=0.01)
   return tf.Variable(initial)
-
 def bias_variable(shape):
   initial = tf.constant(0.1, shape=shape)
   return tf.Variable(initial)
-
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
-
 def max_pool_2x2(x):
   return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                         strides=[1, 2, 2, 1], padding='SAME')
-
 def add_action(a, b):
 	return list([
 		(np.array(a[0])+np.array(b[0])).tolist(),
 		(np.array(a[1])+np.array(b[1])).tolist(),
 		a[2]+b[2]])
+def sub_action(a, b):
+	return list([
+		(np.array(a[0])-np.array(b[0])).tolist(),
+		(np.array(a[1])-np.array(b[1])).tolist(),
+		a[2]-b[2]])
 
 class DeepRL:
 	def __init__(self, world, skel, scene):
@@ -42,6 +43,7 @@ class DeepRL:
 		self.controller = skel.controller
 		self.scene = scene
 		self.replay_buffer = []
+		self.buffer_size = 0
 		self.max_buffer_size = 50000
 		self.gamma = 0.9
 		self.sess = None
@@ -65,34 +67,36 @@ class DeepRL:
 		# 
 		self.scene.update(self.skel.body('trunk').T, 1.0)
 	def step(self):
+		eye = self.controller.get_eye()
 		# 
+		eye.update(self.controller.skel.body('trunk').T)
+		# eye.save_image('test0.png')
+		state_eye_init = eye.get_image()
 		state_skel_init = self.controller.get_state()
-		state_eye_init = self.controller.get_eye().get_image()
 		reward_init = self.reward()
 		if self.check_terminatation(state_eye_init):
 			return None
 		# set new action parameter
 		action_default = self.controller.get_action_default()
 		action_extra = self.eval_action(state_eye_init, state_skel_init)
+		action_extra = self.perturbate_action(action_extra, [0.1]*len(flatten(action_default)))
 		action = add_action(action_default, action_extra)
-		# print action_default
-		# print action_add
-		# print action
-		action = self.perturbate_action(action, [0.1]*len(flatten(action_default)))
 		# print action
 		self.controller.add_action(action)
-		action_flat = flatten(action)
+		action_extra_flat = flatten(action_extra)
 		while True:
 			self.world.step()
 			self.scene.update(self.skel.body('trunk').T, 1.0)
 			if self.controller.is_new_wingbeat():
 				break
+		eye.update(self.controller.skel.body('trunk').T)
+		# eye.save_image('test1.png')
+		state_eye_term = eye.get_image()
 		state_skel_term = self.controller.get_state()
-		state_eye_term = self.controller.get_eye().get_image()
 		reward_term = self.reward()
 		reward = reward_term - reward_init
 		
-		return [state_skel_init, state_eye_init, action_flat, reward, state_skel_term, state_eye_term]
+		return [state_eye_init, state_skel_init, action_extra_flat, reward, state_eye_term, state_skel_term]
 	def perturbate_action(self, action, sigma):
 		action_flat = flatten(action)
 		for i in xrange(len(action_flat)):
@@ -105,6 +109,7 @@ class DeepRL:
 		# Reset every environments
 		if reset:
 			del self.replay_buffer[:]
+			self.buffer_size = 0
 		# Start trainning
 		for i in xrange(max_episode):
 			self.init_step()
@@ -115,6 +120,7 @@ class DeepRL:
 					self.init_step()
 				else:
 					self.replay_buffer.append(t)
+					self.buffer_size += 1
 			self.postprocess_replay_buffer()
 			# Update the network
 			data = self.sample()
@@ -148,12 +154,12 @@ class DeepRL:
 		data_state_skel_prime = []
 
 		for episode in data:
-			data_state_skel.append(episode[0])
-			data_state_eye.append(episode[1])
+			data_state_eye.append(episode[0])
+			data_state_skel.append(episode[1])
 			data_action.append(episode[2])
-			data_reward.append(episode[3])
-			data_state_skel_prime.append(episode[4])
-			data_state_eye_prime.append(episode[5])
+			data_reward.append([episode[3]])
+			data_state_eye_prime.append(episode[4])
+			data_state_skel_prime.append(episode[5])
 
 		data_state_eye = np.array(data_state_eye)
 		data_state_skel = np.array(data_state_skel)
@@ -180,10 +186,15 @@ class DeepRL:
 		# print flatten(qvalue)
 		# print flatten(qvalue_prime)
 		# print action
-		print data_reward
-		print flatten(qvalue_prime)
-		target_qvalue = data_reward + self.gamma*np.array(flatten(qvalue_prime))
+
+		target_qvalue = data_reward + self.gamma*qvalue_prime
 		target_action = data_action
+
+		# print data_reward
+		# print qvalue_prime
+		# print self.gamma*qvalue_prime
+		# print target_qvalue
+		# print target_action
 
 		self.model_train_qvalue.run(feed_dict={
 			self.model_placeholder_eye: data_state_eye,
@@ -193,13 +204,17 @@ class DeepRL:
 			self.model_placeholder_eye: data_state_eye,
 			self.model_placeholder_skel: data_state_skel,
 			self.model_placeholder_action: target_action})
-	def eval_action(self, state_eye, state_skel):
+	def eval_action(self, state_eye, state_skel, action_default=None):
 		s_eye = np.array([state_eye])
 		s_skel = np.array([state_skel])
 		val = self.model_eval_action.eval(feed_dict={
 			self.model_placeholder_eye: s_eye,
 			self.model_placeholder_skel: s_skel})
-		return [val[0][0:6].tolist(),val[0][6:12].tolist(),val[0][12]]
+		a = [val[0][0:6].tolist(),val[0][6:12].tolist(),val[0][12]]
+		if action_default is None:
+			return a
+		else:
+			return add_action(action_default,a)
 	def eval_qvalue(self, state_eye, state_skel):
 		s_eye = np.array([state_eye])
 		s_skel = np.array([state_skel])
@@ -269,22 +284,26 @@ class DeepRL:
 		self.has_model = True
 	def postprocess_replay_buffer(self):
 		max_size = self.max_buffer_size
-		cur_size = len(self.replay_buffer)
+		cur_size = self.buffer_size
 		if cur_size > max_size:
 			del self.replay_buffer[0:cur_size-max_size]
+			self.buffer_size = max_size
 	def reward(self):
 		return self.scene.score()
 	def sample(self, sample_size=50):
 		data = []
 		pick_history = []
-		num_data = len(self.replay_buffer)
+		num_data = 0
+		if self.buffer_size < sample_size:
+			sample_size = self.buffer_size
 		while num_data < sample_size:
-			pick = np.random.int(num_data)
+			pick = np.random.randint(self.buffer_size)
 			if pick in pick_history:
 				continue
 			else:
 				pick_history.append(pick)
 			data.append(self.replay_buffer[pick])
+			num_data += 1
 		return data
 	def get_controller(self):
 		return 0

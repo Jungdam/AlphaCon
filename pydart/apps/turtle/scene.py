@@ -50,7 +50,7 @@ class Scene:
 			self.radius[i] = self.radius_init[i] + noise_radius
 			self.hit[i] = False
 	def render(self):
-		glColor3d(0.3, 0.3, 0.3)
+		glColor4d(0.8, 0.1, 0.1, 0.5)
 		for i in range(self.size):
 			if self.hit[i]:
 				continue

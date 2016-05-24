@@ -29,6 +29,8 @@ class Controller:
         self.reset()
     def is_new_wingbeat(self):
         return self.new_wingbeat
+    def get_num_wingbeat(self):
+        return self.cnt_wingbeat
     def reset(self):
         self.tau_sum = 0.0
         del self.action[:]
