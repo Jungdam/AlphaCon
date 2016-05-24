@@ -14,6 +14,7 @@ import multiprocessing
 from multiprocessing import Process, Queue
 import eye
 import deepRL
+import scene
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -32,6 +33,7 @@ state['DrawAeroForce'] = True
 state['DrawGround'] = True
 state['DrawJoint'] = False
 state['EnableAerodynamics'] = True
+state['DrawScene'] = True
 
 aero_force = []
 
@@ -121,6 +123,8 @@ def step_callback(world):
         print 'state: ', skel.controller.get_state()
         print 'velocity: ', skel.body('trunk').world_com_velocity()
 
+    scene.update(skel.body('trunk').T, 1.0)
+
     # print 'time: ', world.time()
 
     # global state
@@ -184,12 +188,10 @@ def render_callback():
         glEnd()        
 
     if state['DrawJoint']:
-        
         glLineWidth(2.0)
         for i in range(skel.num_joints()):
             joint = skel.joint(i)
             # print joint.name
-
             T = joint.transformation()
             R = T[0:3, 0:3]
             t = T[0:3, 3]
@@ -214,6 +216,9 @@ def render_callback():
             glVertex3d(R[0,2],R[1,2],R[2,2])
             glEnd()
             glPopMatrix()
+
+    if state['DrawScene']:
+        scene.render()
 
 def keyboard_callback(world, key):
     """ Programmable interactions """
@@ -241,9 +246,29 @@ def keyboard_callback(world, key):
         world.reset()
         skel.controller.reset()
     elif key == 'd':
+        
         if deepRL.has_model is False:
             deepRL.create_model()
-        print deepRL.step()
+
+        # eye = skel.controller.get_eye()
+        # eye.update(skel.body('trunk').T)
+        # # eye.save_image('test.png')
+        # state_eye = eye.get_image()
+        # state_skel = skel.controller.get_state()
+
+        # print state_skel
+        # print np.array([state_skel])
+
+        # print deepRL.eval_action(state_eye,state_skel)
+        # print deepRL.eval_qvalue(state_eye,state_skel)
+
+        data = []
+        for i in range(10):
+            print i
+            data.append(deepRL.step())
+        deepRL.update_model(data)
+    elif key == 'p':
+        scene.perturbate()
     elif key == '0':
         print('test')
         # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
@@ -252,10 +277,10 @@ def keyboard_callback(world, key):
         # pydart.glutgui.set_trackball(tb)
         eye = skel.controller.get_eye()
         eye.update(skel.body('trunk').T)
+        eye.save_image('test.png')
         im = eye.get_image()
-        print type(im)
+        np.set_printoptions(threshold=np.nan)
         print im
-        np.savetxt('test.txt', im)
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -291,12 +316,22 @@ def keyboard_callback(world, key):
         # cma.pprint(es.result())
         print('-----------End Optimization-------------')
 
-world = pydart.create_world(dt, skel_file)
-world.add_skeleton(wall_file)
-skel = world.skels[0]
-skel.controller = controller.Controller(world, skel, eye.Eye(world=world))
+def gen_scene(stride=3.0, size=5):
+    pos = []
+    radius = []
+    for z in range(size):
+        pos.append(np.array([0, 1.0, z*stride+1.0]))
+        radius.append(0.5)
+    return pos, radius
+scene_p, scene_r = gen_scene()
+scene = scene.Scene(scene_p, scene_r)
 
-deepRL = deepRL.DeepRL(world, skel)
+world = pydart.create_world(dt, skel_file)
+# world.add_skeleton(wall_file)
+skel = world.skels[0]
+skel.controller = controller.Controller(world, skel, eye.Eye(world=world,scene=scene))
+
+deepRL = deepRL.DeepRL(world, skel, scene)
 
 # Run the application
 if False:#'qt' in sys.argv:

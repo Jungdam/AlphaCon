@@ -7,7 +7,7 @@ from OpenGL.GL.framebufferobjects import *
 import numpy as np
 import mmMath
 import myworld
-from PIL import Image
+from PIL import Image, ImageMath
 import math
 import os
 import time
@@ -16,7 +16,7 @@ import traceback
 EPS = 1E-6
 
 class Eye:
-	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=100, world=None):
+	def __init__(self, w=100, h=100, fov=90.0, near=0.5, far=100, world=None, scene=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
@@ -24,6 +24,7 @@ class Eye:
 		self.near = near
 		self.far = far
 		self.world = world
+		self.scene = scene
 		self.frame = mmMath.I_SE3()
 		self.fbo = None
 		self.texture = None
@@ -106,8 +107,9 @@ class Eye:
 	def save_image(self, filename):
 		self.image.save(filename)
 	def get_image(self):
-		im = np.asarray(self.image,dtype=np.float32)
-		im /= 255.0
+		im = ImageMath.eval("float(a)", a=self.image)
+		im = ImageMath.eval("a/255.0", a=im)
+		im = np.reshape(im, [self.w, self.h, 1])
 		return im
 	def get_image_size(self):
 		return (self.w, self.h)
@@ -131,6 +133,7 @@ class Eye:
 		self.w = w
 		self.h = h
 	def render_callback(self):
-		if self.world is None:
-			return
-		self.world.render()
+		if self.world is not None:
+			self.world.render()
+		if self.scene is not None:
+			self.scene.render()

@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import warnings
+import scene
 
 def flatten(l):
 	return list(_flatten_(l))
@@ -14,7 +15,7 @@ def _flatten_(*args):
             yield x
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
+  initial = tf.truncated_normal(shape, stddev=0.01)
   return tf.Variable(initial)
 
 def bias_variable(shape):
@@ -28,11 +29,18 @@ def max_pool_2x2(x):
   return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                         strides=[1, 2, 2, 1], padding='SAME')
 
+def add_action(a, b):
+	return list([
+		(np.array(a[0])+np.array(b[0])).tolist(),
+		(np.array(a[1])+np.array(b[1])).tolist(),
+		a[2]+b[2]])
+
 class DeepRL:
-	def __init__(self, world, skel):
+	def __init__(self, world, skel, scene):
 		self.world = world
 		self.skel = skel
 		self.controller = skel.controller
+		self.scene = scene
 		self.replay_buffer = []
 		self.max_buffer_size = 50000
 		self.gamma = 0.9
@@ -48,33 +56,49 @@ class DeepRL:
 		self.has_model = False
 	def has_model(self):
 		return self.has_model
-	def step(self):
+	def init_step(self):
+		# initialize world and controller
 		self.world.reset()
 		self.controller.reset()
-		# here set new environment
-		#
-		# here set new action parameter
-		sigma = 0.25
-		action_default = self.controller.get_action_default()
-		noiseL = np.random.normal(0.0, sigma, size=len(action_default[0]))
-		noiseR = np.random.normal(0.0, sigma, size=len(action_default[1]))
-		noiseT = np.random.normal(0.0, sigma, size=1)
-		l = np.array(action_default[0]) + noiseL
-		r = np.array(action_default[1]) + noiseR
-		t = np.array(action_default[2]) + noiseT
-		action = [l.tolist(),r.tolist(),t[0]]
-		self.controller.add_action(action)
-		state_skel_init = np.array(self.controller.get_state())
+		# set new environment
+		self.scene.perturbate()
+		# 
+		self.scene.update(self.skel.body('trunk').T, 1.0)
+	def step(self):
+		# 
+		state_skel_init = self.controller.get_state()
 		state_eye_init = self.controller.get_eye().get_image()
+		reward_init = self.reward()
+		if self.check_terminatation(state_eye_init):
+			return None
+		# set new action parameter
+		action_default = self.controller.get_action_default()
+		action_extra = self.eval_action(state_eye_init, state_skel_init)
+		action = add_action(action_default, action_extra)
+		# print action_default
+		# print action_add
+		# print action
+		action = self.perturbate_action(action, [0.1]*len(flatten(action_default)))
+		# print action
+		self.controller.add_action(action)
+		action_flat = flatten(action)
 		while True:
 			self.world.step()
+			self.scene.update(self.skel.body('trunk').T, 1.0)
 			if self.controller.is_new_wingbeat():
 				break
-		state_skel_term = np.array(self.controller.get_state())
+		state_skel_term = self.controller.get_state()
 		state_eye_term = self.controller.get_eye().get_image()
-		reward = self.reward()
-		return [state_skel_init, state_eye_init, action, reward, state_skel_term, state_eye_term]
-	def run(self, max_iter=50000, data_per_iter=100, reset=True):
+		reward_term = self.reward()
+		reward = reward_term - reward_init
+		
+		return [state_skel_init, state_eye_init, action_flat, reward, state_skel_term, state_eye_term]
+	def perturbate_action(self, action, sigma):
+		action_flat = flatten(action)
+		for i in xrange(len(action_flat)):
+			action_flat[i] += np.random.normal(0.0, sigma[i])
+		return [action_flat[0:6],action_flat[6:12],action_flat[12]]
+	def run(self, max_episode=100, max_iter=100, reset=True):
 		if self.has_model is False:
 			warnings.warn('DeepRL: No Model is created')
 			return
@@ -82,15 +106,36 @@ class DeepRL:
 		if reset:
 			del self.replay_buffer[:]
 		# Start trainning
-		for i in xrange(max_iter):
+		for i in xrange(max_episode):
+			self.init_step()
 			# Generate trainning tuples
-			for j in xrange(data_per_iter):
+			for j in xrange(max_iter):
 				t = self.step()
-				self.replay_buffer.append(t)
+				if t is None:
+					self.init_step()
+				else:
+					self.replay_buffer.append(t)
 			self.postprocess_replay_buffer()
 			# Update the network
 			data = self.sample()
 			self.update_model(data)
+	def check_terminatation(self, state_eye):
+		flag = False
+		# no valid depth image
+		threshold = 0.99
+		w,h,c = state_eye.shape
+		term_eye = True
+		for i in xrange(w):
+			if term_eye is False:
+				break
+			for j in xrange(h):
+				val = state_eye[i,j,0]
+				if val <= threshold:
+					term_eye = False
+					break
+		flag = flag and term_eye
+		# 
+		return flag
 	def update_model(self, data):
 		if self.has_model is False:
 			warnings.warn('DeepRL: No Model is created')
@@ -101,14 +146,14 @@ class DeepRL:
 		data_reward = []
 		data_state_eye_prime = []
 		data_state_skel_prime = []
-		
+
 		for episode in data:
-			data_state_eye.append(data[0])
-			data_state_skel.append(data[1])
-			data_action.append(data[2])
-			data_reward.append(data[3])
-			data_state_eye_prime.append(data[4])
-			data_state_skel_prime.append(data[5])
+			data_state_skel.append(episode[0])
+			data_state_eye.append(episode[1])
+			data_action.append(episode[2])
+			data_reward.append(episode[3])
+			data_state_skel_prime.append(episode[4])
+			data_state_eye_prime.append(episode[5])
 
 		data_state_eye = np.array(data_state_eye)
 		data_state_skel = np.array(data_state_skel)
@@ -117,32 +162,56 @@ class DeepRL:
 		data_state_eye_prime = np.array(data_state_eye_prime)
 		data_state_skel_prime = np.array(data_state_skel_prime)
 
-		qvalue = self.model_eval_qfnc.eval(feed_dict={ \
-			self.model_placeholder_eye: data_state_eye, \
-			self.model_placeholder_skel: data_state_skel})
-		qvalue_prime = self.model_eval_qfnc.eval(feed_dict={ \
-			self.model_placeholder_eye: data_state_eye_prime, \
-			self.model_placeholder_skel: data_state_skel_prime})
-		action = self.model_eval_act.eval(feed_dict={ \
-			self.model_placeholder_eye: data_state_eye, \
-			self.model_placeholder_skel: data_state_skel})
+		# print data_state_eye.shape
+		# print data_state_skel.shape
+		# print data_action.shape
+		# print data_reward.shape
 
-		target_qvalue = data_reward + self.gamma*qvalue_prime
+		qvalue_prime = self.model_eval_qvalue.eval(feed_dict={
+			self.model_placeholder_eye: data_state_eye_prime,
+			self.model_placeholder_skel: data_state_skel_prime})
+		# qvalue = self.model_eval_qvalue.eval(feed_dict={
+		# 	self.model_placeholder_eye: data_state_eye,
+		# 	self.model_placeholder_skel: data_state_skel})
+		# action = self.model_eval_action.eval(feed_dict={
+		# 	self.model_placeholder_eye: data_state_eye,
+		# 	self.model_placeholder_skel: data_state_skel})
+
+		# print flatten(qvalue)
+		# print flatten(qvalue_prime)
+		# print action
+		print data_reward
+		print flatten(qvalue_prime)
+		target_qvalue = data_reward + self.gamma*np.array(flatten(qvalue_prime))
 		target_action = data_action
 
-		self.model_train_qfnc.run(feed_dict={ \
-			self.model_placeholder_eye: data_state_eye, \
-			self.model_placeholder_skel: data_state_skel, \
-			self.model_placeholder_qvalue: data_target_qvalue})
-		self.model_train_act.run(feed_dict={ \
-			self.model_placeholder_eye: data_state_eye, \
-			self.model_placeholder_skel: data_state_skel, \
-			self.model_placeholder_action: data_target_action})
+		self.model_train_qvalue.run(feed_dict={
+			self.model_placeholder_eye: data_state_eye,
+			self.model_placeholder_skel: data_state_skel,
+			self.model_placeholder_qvalue: target_qvalue})
+		self.model_train_action.run(feed_dict={
+			self.model_placeholder_eye: data_state_eye,
+			self.model_placeholder_skel: data_state_skel,
+			self.model_placeholder_action: target_action})
+	def eval_action(self, state_eye, state_skel):
+		s_eye = np.array([state_eye])
+		s_skel = np.array([state_skel])
+		val = self.model_eval_action.eval(feed_dict={
+			self.model_placeholder_eye: s_eye,
+			self.model_placeholder_skel: s_skel})
+		return [val[0][0:6].tolist(),val[0][6:12].tolist(),val[0][12]]
+	def eval_qvalue(self, state_eye, state_skel):
+		s_eye = np.array([state_eye])
+		s_skel = np.array([state_skel])
+		val = self.model_eval_qvalue.eval(feed_dict={
+			self.model_placeholder_eye: s_eye,
+			self.model_placeholder_skel: s_skel})
+		return val[0][0]
 	def create_model(self):
 		# Check dimensions
 		w,h = self.controller.get_eye().get_image_size()
-		print flatten(self.controller.get_state())
-		print flatten(self.controller.get_action_default())
+		#print flatten(self.controller.get_state())
+		#print flatten(self.controller.get_action_default())
 		d = len(flatten(self.controller.get_state()))
 		a = len(flatten(self.controller.get_action_default()))
 		# 
@@ -204,7 +273,7 @@ class DeepRL:
 		if cur_size > max_size:
 			del self.replay_buffer[0:cur_size-max_size]
 	def reward(self):
-		return np.random.uniform(0,1)
+		return self.scene.score()
 	def sample(self, sample_size=50):
 		data = []
 		pick_history = []
