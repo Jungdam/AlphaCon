@@ -17,6 +17,7 @@ state = {}
 state['simulate'] = False
 state['play'] = False
 state['index'] = 0.0
+state['play_speed'] = 1.0
 tb = None
 step_callback_func = None
 keyboard_callback_func = None
@@ -121,7 +122,8 @@ def drawGL():
         render_callback_func()
 
     glutSwapBuffers()
-
+def set_play_speed(val):
+    state['play_speed'] = val
 def play(val=None):
     if val is None:
         state['simulate'] = not state['simulate']
@@ -187,8 +189,9 @@ def idle():
             return
         if state['simulate']:
             global step_callback_func
-            num_iter = max(1,int(delta/sim.dt))
-            for i in range(num_iter):
+            num_iter = max(1,int(float(delta)/sim.dt))
+            num_iter = int(state['play_speed']*float(num_iter)+0.5)
+            for i in xrange(num_iter):
                 if step_callback_func is not None:
                     step_callback_func(sim)
                 sim.step()

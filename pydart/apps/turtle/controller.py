@@ -79,14 +79,16 @@ class Controller:
         R_trunk,p_trunk = mmMath.T2Rp(body_trunk.T)
         R_trunk_inv = inv(R_trunk)
         # trunk state 
-        vel_trunk = body_trunk.world_com_velocity()
-        state.append(np.dot(R_trunk_inv,vel_trunk))
+        # vel_trunk = body_trunk.world_com_velocity()
+        # state.append(np.dot(R_trunk_inv,vel_trunk))
         # other bodies state
         bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
         for name in bodies:
             body = self.skel.body(name)
             l = body.world_com() - p_trunk
+            v = body.world_com_velocity()
             state.append(np.dot(R_trunk_inv,l))
+            state.append(np.dot(R_trunk_inv,v))
         return np.array(state).flatten().tolist()
     def get_eye(self):
         if self.eye is not None:

@@ -40,7 +40,7 @@
 
             <!-- Body: Trunk -->
             <body name="trunk">
-                <transformation>0 0.85 0 0 0 0</transformation>
+                <transformation>0 1.0 0 0 0 0</transformation>
                 <inertia>
                     <mass>50.0</mass>
                     <offset>0.0 0 0.0</offset>
@@ -67,7 +67,7 @@
 
             <!-- Body: Left Arm -->
             <body name="left_arm">
-                <transformation>0.85 0.85 0.3 0 0 0</transformation>
+                <transformation>0.85 1.0 0.3 0 0 0</transformation>
                 <inertia>
                     <mass>5.0</mass>
                     <offset>0.0 0 0.0</offset>
@@ -92,7 +92,7 @@
 
             <!-- Body: Right Arm -->
             <body name="right_arm">
-                <transformation>-0.85 0.85 0.3 0 0 0</transformation>
+                <transformation>-0.85 1.0 0.3 0 0 0</transformation>
                 <inertia>
                     <mass>5.0</mass>
                     <offset>0.0 0 0.0</offset>
@@ -117,7 +117,7 @@
 
             <!-- Body: Left Hand -->
             <body name="left_hand">
-                <transformation>1.45 0.85 0.3 0 0 0</transformation>
+                <transformation>1.45 1.0 0.3 0 0 0</transformation>
                 <inertia>
                     <mass>1.0</mass>
                     <offset>0.0 0 0.0</offset>
@@ -142,7 +142,7 @@
 
             <!-- Body: Right Hand -->
             <body name="right_hand">
-                <transformation>-1.45 0.85 0.3 0 0 0</transformation>
+                <transformation>-1.45 1.0 0.3 0 0 0</transformation>
                 <inertia>
                     <mass>1.0</mass>
                     <offset>0.0 0 0.0</offset>
@@ -167,7 +167,7 @@
 
             <!-- Body: Left Leg -->
             <body name="left_leg">
-                <transformation>0.45 0.85 -0.7 0 0 0</transformation>
+                <transformation>0.45 1.0 -0.7 0 0 0</transformation>
                 <inertia>
                     <mass>2.0</mass>
                     <offset>0.0 0.0 0.0</offset>
@@ -192,7 +192,7 @@
 
             <!-- Body: Right Leg -->
             <body name="right_leg">
-                <transformation>-0.45 0.85 -0.7 0 0 0</transformation>
+                <transformation>-0.45 1.0 -0.7 0 0 0</transformation>
                 <inertia>
                     <mass>2.0</mass>
                     <offset>0.0 0.0 0.0</offset>

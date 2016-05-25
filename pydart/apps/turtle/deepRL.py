@@ -15,10 +15,10 @@ def _flatten_(*args):
             yield x
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.01)
+  initial = tf.truncated_normal(shape, stddev=0.02)
   return tf.Variable(initial)
 def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
+  initial = tf.constant(0.02, shape=shape)
   return tf.Variable(initial)
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -44,8 +44,11 @@ class DeepRL:
 		self.scene = scene
 		self.replay_buffer = []
 		self.buffer_size = 0
+		self.buffer_size_accum = 0
 		self.max_buffer_size = 50000
+		self.model_initialized = False
 		self.gamma = 0.9
+		self.dropout_keep_prob = 0.5
 		self.sess = None
 		self.model_eval_qvalue = None
 		self.model_eval_action = None
@@ -55,21 +58,23 @@ class DeepRL:
 		self.model_placeholder_skel = None
 		self.model_placeholder_qvalue = None
 		self.model_placeholder_action = None
-		self.has_model = False
+		self.model_loss_qvalue = None
+		self.model_loss_action = None
+		self.model_dropout_keep_prob = None
+		
 	def has_model(self):
-		return self.has_model
+		return self.model_initialized
 	def init_step(self):
 		# initialize world and controller
 		self.world.reset()
 		self.controller.reset()
 		# set new environment
 		self.scene.perturbate()
-		# 
-		self.scene.update(self.skel.body('trunk').T, 1.0)
+		self.scene.update(self.skel.body('trunk').T)
 	def step(self):
 		eye = self.controller.get_eye()
 		# 
-		eye.update(self.controller.skel.body('trunk').T)
+		eye.update(self.skel.body('trunk').T)
 		# eye.save_image('test0.png')
 		state_eye_init = eye.get_image()
 		state_skel_init = self.controller.get_state()
@@ -86,10 +91,10 @@ class DeepRL:
 		action_extra_flat = flatten(action_extra)
 		while True:
 			self.world.step()
-			self.scene.update(self.skel.body('trunk').T, 1.0)
+			self.scene.update(self.skel.body('trunk').T)
 			if self.controller.is_new_wingbeat():
 				break
-		eye.update(self.controller.skel.body('trunk').T)
+		eye.update(self.skel.body('trunk').T)
 		# eye.save_image('test1.png')
 		state_eye_term = eye.get_image()
 		state_skel_term = self.controller.get_state()
@@ -102,32 +107,38 @@ class DeepRL:
 		for i in xrange(len(action_flat)):
 			action_flat[i] += np.random.normal(0.0, sigma[i])
 		return [action_flat[0:6],action_flat[6:12],action_flat[12]]
-	def run(self, max_episode=100, max_iter=100, reset=True):
-		if self.has_model is False:
-			warnings.warn('DeepRL: No Model is created')
-			return
-		# Reset every environments
+	def reset_buffer(self):
 		if reset:
 			del self.replay_buffer[:]
 			self.buffer_size = 0
+			self.buffer_size_accum = 0
+	def get_buffer_size_accumulated(self):
+		return self.buffer_size_accum
+	def run(self, max_episode=100, max_iter=100):
+		if self.has_model is False:
+			warnings.warn('DeepRL: No Model is created')
+			return
 		# Start trainning
 		for i in xrange(max_episode):
+			print '[ ', i, 'th episode ]', 'buffer_size:', self.buffer_size
 			self.init_step()
 			# Generate trainning tuples
 			for j in xrange(max_iter):
+				# print '\r', j, 'th iteration'
 				t = self.step()
+				# print t is None
 				if t is None:
 					self.init_step()
 				else:
 					self.replay_buffer.append(t)
 					self.buffer_size += 1
+					self.buffer_size_accum += 1
 			self.postprocess_replay_buffer()
 			# Update the network
 			data = self.sample()
-			self.update_model(data)
+			self.update_model(data, True)
 	def check_terminatation(self, state_eye):
-		flag = False
-		# no valid depth image
+		# No valid depth image
 		threshold = 0.99
 		w,h,c = state_eye.shape
 		term_eye = True
@@ -139,11 +150,12 @@ class DeepRL:
 				if val <= threshold:
 					term_eye = False
 					break
-		flag = flag and term_eye
-		# 
-		return flag
-	def update_model(self, data):
-		if self.has_model is False:
+		if term_eye:
+			return True
+		# Passed every termination conditions
+		return False
+	def update_model(self, data, print_loss=False):
+		if self.model_initialized is False:
 			warnings.warn('DeepRL: No Model is created')
 			return
 		data_state_eye = []
@@ -175,7 +187,8 @@ class DeepRL:
 
 		qvalue_prime = self.model_eval_qvalue.eval(feed_dict={
 			self.model_placeholder_eye: data_state_eye_prime,
-			self.model_placeholder_skel: data_state_skel_prime})
+			self.model_placeholder_skel: data_state_skel_prime,
+			self.model_dropout_keep_prob: 1.0})
 		# qvalue = self.model_eval_qvalue.eval(feed_dict={
 		# 	self.model_placeholder_eye: data_state_eye,
 		# 	self.model_placeholder_skel: data_state_skel})
@@ -196,20 +209,38 @@ class DeepRL:
 		# print target_qvalue
 		# print target_action
 
+		if print_loss:
+			q = self.model_loss_qvalue.eval(feed_dict={
+				self.model_placeholder_eye: data_state_eye,
+				self.model_placeholder_skel: data_state_skel,
+				self.model_placeholder_qvalue: target_qvalue,
+				self.model_dropout_keep_prob: 1.0})
+			a = self.model_loss_action.eval(feed_dict={
+				self.model_placeholder_eye: data_state_eye,
+				self.model_placeholder_skel: data_state_skel,
+				self.model_placeholder_action: target_action,
+				self.model_dropout_keep_prob: 1.0})
+			print 'Loss values'
+			print '\tqvalue:', q
+			print '\taction:', a
+
 		self.model_train_qvalue.run(feed_dict={
 			self.model_placeholder_eye: data_state_eye,
 			self.model_placeholder_skel: data_state_skel,
-			self.model_placeholder_qvalue: target_qvalue})
+			self.model_placeholder_qvalue: target_qvalue,
+			self.model_dropout_keep_prob: self.dropout_keep_prob})
 		self.model_train_action.run(feed_dict={
 			self.model_placeholder_eye: data_state_eye,
 			self.model_placeholder_skel: data_state_skel,
-			self.model_placeholder_action: target_action})
+			self.model_placeholder_action: target_action,
+			self.model_dropout_keep_prob: self.dropout_keep_prob})
 	def eval_action(self, state_eye, state_skel, action_default=None):
 		s_eye = np.array([state_eye])
 		s_skel = np.array([state_skel])
 		val = self.model_eval_action.eval(feed_dict={
 			self.model_placeholder_eye: s_eye,
-			self.model_placeholder_skel: s_skel})
+			self.model_placeholder_skel: s_skel,
+			self.model_dropout_keep_prob: 1.0})
 		a = [val[0][0:6].tolist(),val[0][6:12].tolist(),val[0][12]]
 		if action_default is None:
 			return a
@@ -220,9 +251,12 @@ class DeepRL:
 		s_skel = np.array([state_skel])
 		val = self.model_eval_qvalue.eval(feed_dict={
 			self.model_placeholder_eye: s_eye,
-			self.model_placeholder_skel: s_skel})
+			self.model_placeholder_skel: s_skel,
+			self.model_dropout_keep_prob: 1.0})
 		return val[0][0]
 	def create_model(self):
+		# Create session
+		self.sess = tf.InteractiveSession()
 		# Check dimensions
 		w,h = self.controller.get_eye().get_image_size()
 		#print flatten(self.controller.get_state())
@@ -234,6 +268,7 @@ class DeepRL:
 		state_skel = tf.placeholder(tf.float32, [None,d])
 		qvalue = tf.placeholder(tf.float32, [None,1])
 		action = tf.placeholder(tf.float32, [None,a])
+		keep_prob = tf.placeholder(tf.float32)
 		# Frist conv layer for the eye
 		W_conv1 = weight_variable([5, 5, 1, 32])
 		b_conv1 = bias_variable([32])
@@ -254,34 +289,35 @@ class DeepRL:
 		b_fc2 = bias_variable([512])
 		h_comb1 = tf.concat(1, [h_fc1, state_skel])
 		h_fc2 = tf.nn.relu(tf.matmul(h_comb1, W_fc2) + b_fc2)
+		h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 		#
-		W_fc3_qfnc = weight_variable([512, 1])
-		b_fc3_qfnc = bias_variable([1])
-		h_fc3_qfnc = tf.matmul(h_fc2, W_fc3_qfnc) + b_fc3_qfnc
-		W_fc3_act = weight_variable([512, a])
-		b_fc3_act = bias_variable([a])
-		h_fc3_act = tf.matmul(h_fc2, W_fc3_act) + b_fc3_act
+		W_fc3_qvalue = weight_variable([512, 1])
+		b_fc3_qvalue = bias_variable([1])
+		h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
+		W_fc3_action = weight_variable([512, a])
+		b_fc3_action = bias_variable([a])
+		h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 		# Optimizer
-		loss_qfnc = tf.reduce_mean(tf.square(qvalue - h_fc3_qfnc))
-		optimizer_qfnc = tf.train.GradientDescentOptimizer(0.1)
-		self.model_train_qvalue = optimizer_qfnc.minimize(loss_qfnc)
-		loss_act = tf.reduce_mean(tf.square(action - h_fc3_act))
-		optimizer_act = tf.train.GradientDescentOptimizer(0.1)
-		self.model_train_action = optimizer_qfnc.minimize(loss_act)
+		loss_qvalue = tf.reduce_mean(tf.square(qvalue - h_fc3_qvalue))
+		self.model_train_qvalue = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
+		loss_action = tf.reduce_mean(tf.square(action - h_fc3_action))
+		self.model_train_action = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
+		# Dropout
+		self.model_dropout_keep_prob = keep_prob
+		# Evalutation
+		self.model_loss_qvalue = loss_qvalue
+		self.model_loss_action = loss_action
 		# Place holders
 		self.model_placeholder_eye = state_eye
 		self.model_placeholder_skel = state_skel
 		self.model_placeholder_qvalue = qvalue
 		self.model_placeholder_action = action
 		# Evaultion
-		self.model_eval_qvalue = h_fc3_qfnc
-		self.model_eval_action = h_fc3_act
+		self.model_eval_qvalue = h_fc3_qvalue
+		self.model_eval_action = h_fc3_action
 		# Initialize all variables
-		init = tf.initialize_all_variables()
-		self.sess = tf.InteractiveSession()
-		self.sess.run(init)
-
-		self.has_model = True
+		self.sess.run(tf.initialize_all_variables())
+		self.model_initialized = True
 	def postprocess_replay_buffer(self):
 		max_size = self.max_buffer_size
 		cur_size = self.buffer_size

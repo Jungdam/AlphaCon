@@ -15,6 +15,7 @@ from multiprocessing import Process, Queue
 import eye
 import deepRL
 import scene
+from PIL import Image
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -36,8 +37,8 @@ state['EnableAerodynamics'] = True
 state['DrawScene'] = True
 state['DeepControl'] = False
 state['DeepTrainning'] = False
-state['DeepTrainningResultShowCnt'] = 3
-state['DeepTrainningResultShowMax'] = 3
+state['DeepTrainningResultShowMax'] = 2
+state['DeepTrainningResultShowCnt'] = 2
 
 aero_force = []
 
@@ -129,35 +130,41 @@ def step_callback(world):
     #     print 'velocity: ', skel.body('trunk').world_com_velocity()
 
     if state['DeepTrainning']:
-        print '[DeepTrainning]'
-        deepRL.run(5, 10)
+        print '[DeepTrainning] start'
+        deepRL.run(100, 15)
         state['DeepTrainning'] = False
         state['DeepControl'] = True
         world.reset()
         skel.controller.reset()
         scene.perturbate()
+        print '[DeepTrainning] end'
 
     if state['DeepControl']:
         if skel.controller.is_new_wingbeat():
-            print '[DeepControl]', '\tnew action!!!'
+            print '[DeepControl] start'
             skel.controller.get_eye().update(skel.body('trunk').T)
             state_eye = skel.controller.get_eye().get_image()
             state_skel = skel.controller.get_state()
             action = deepRL.eval_action(state_eye,state_skel, skel.controller.get_action_default())
             skel.controller.add_action(action)
-            if skel.controller.get_num_wingbeat() >= 5:
-                world.reset()
-                skel.controller.reset()
-                scene.perturbate()
+            print '[DeepControl] end'
+            if skel.controller.get_num_wingbeat() >= 15:
                 show_cnt = state['DeepTrainningResultShowCnt']
                 show_cnt -= 1
                 if show_cnt <= 0:
                     show_cnt = state['DeepTrainningResultShowMax']
-                state['DeepTrainning'] = True
-                state['DeepControl'] = False
+                    if deepRL.get_buffer_size_accumulated() > 100000:
+                        state['DeepTrainning'] = False
+                        state['DeepControl'] = True
+                    else:
+                        state['DeepTrainning'] = True
+                        state['DeepControl'] = False
                 state['DeepTrainningResultShowCnt'] = show_cnt
+                world.reset()
+                skel.controller.reset()
+                scene.perturbate()
 
-    scene.update(skel.body('trunk').T, 1.0)
+    scene.update(skel.body('trunk').T)    
 
     # print 'time: ', world.time()
 
@@ -280,10 +287,15 @@ def keyboard_callback(world, key):
         world.reset()
         skel.controller.reset()
     elif key == 'd':
-        
-        if deepRL.has_model is False:
+        if deepRL.has_model() is False:
+            print 'DeepRL initializing ...'
             deepRL.create_model()
-
+            print 'DeepRL initialized.'
+        # for i in range(5):
+        #     data = deepRL.step()
+        #     if data is not None:
+        #         Image.fromarray(np.uint8(np.reshape(data[0],(100,100))*255)).save('./data/debug/t'+str(i)+'_a.png')
+        #         Image.fromarray(np.uint8(np.reshape(data[4],(100,100))*255)).save('./data/debug/t'+str(i)+'_b.png')
         # eye = skel.controller.get_eye()
         # eye.update(skel.body('trunk').T)
         # # eye.save_image('test.png')
@@ -303,10 +315,26 @@ def keyboard_callback(world, key):
         # deepRL.update_model(data)
 
         # deepRL.run(10, 10)
+        # state['DeepTrainning'] = True
+        # state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
+        # pydart.glutgui.play(True)
+    elif key == 'f':
+        if deepRL.has_model() is False:
+            print 'DeepRL is now initialized'
+            return
         state['DeepTrainning'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
+        pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
-
+    elif key == 'g':
+        state['DeepTrainning'] = False
+        state['DeepControl'] = True
+        state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
+        world.reset()
+        skel.controller.reset()
+        scene.perturbate()
+        pydart.glutgui.set_play_speed(10.0)
+        pydart.glutgui.play(True)
     elif key == 'p':
         scene.perturbate()
     elif key == '0':
@@ -356,7 +384,7 @@ def keyboard_callback(world, key):
         # cma.pprint(es.result())
         print('-----------End Optimization-------------')
 
-def gen_scene(stride=3.0, size=5):
+def gen_scene(stride=3.0, size=10):
     pos = []
     radius = []
     for z in range(size):

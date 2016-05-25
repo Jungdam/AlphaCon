@@ -16,7 +16,7 @@ import traceback
 EPS = 1E-6
 
 class Eye:
-	def __init__(self, w=100, h=100, fov=90.0, near=0.5, far=100, world=None, scene=None):
+	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=100, world=None, scene=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
@@ -94,8 +94,7 @@ class Eye:
 		glPopMatrix()
 
 		data = glReadPixels(0, 0, self.w, self.h,  GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE)
-		self.image = Image.fromstring('L', (self.w, self.h), data)
-		self.image = self.image.transpose(Image.FLIP_TOP_BOTTOM)
+		self.image = Image.fromstring('L', (self.w, self.h), data).transpose(Image.FLIP_TOP_BOTTOM)
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0)
 		glDrawBuffer(GL_BACK)
