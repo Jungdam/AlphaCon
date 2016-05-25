@@ -74,9 +74,7 @@ class DeepRL:
 	def step(self):
 		eye = self.controller.get_eye()
 		# 
-		eye.update(self.skel.body('trunk').T)
-		# eye.save_image('test0.png')
-		state_eye_init = eye.get_image()
+		state_eye_init = eye.get_image(self.skel.body('trunk').T)
 		state_skel_init = self.controller.get_state()
 		reward_init = self.reward()
 		if self.check_terminatation(state_eye_init):
@@ -84,7 +82,7 @@ class DeepRL:
 		# set new action parameter
 		action_default = self.controller.get_action_default()
 		action_extra = self.eval_action(state_eye_init, state_skel_init)
-		action_extra = self.perturbate_action(action_extra, [0.1]*len(flatten(action_default)))
+		action_extra = self.perturbate_action(action_extra, [0.25]*len(flatten(action_default)))
 		action = add_action(action_default, action_extra)
 		# print action
 		self.controller.add_action(action)
@@ -94,9 +92,7 @@ class DeepRL:
 			self.scene.update(self.skel.body('trunk').T)
 			if self.controller.is_new_wingbeat():
 				break
-		eye.update(self.skel.body('trunk').T)
-		# eye.save_image('test1.png')
-		state_eye_term = eye.get_image()
+		state_eye_term = eye.get_image(self.skel.body('trunk').T)
 		state_skel_term = self.controller.get_state()
 		reward_term = self.reward()
 		reward = reward_term - reward_init
@@ -285,16 +281,16 @@ class DeepRL:
 		h_pool2_flat = tf.reshape(h_pool2, [-1, (w/4)*(h/4)*64])
 		h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 		# Combined layer for the eye and the skel
-		W_fc2 = weight_variable([256+d, 512])
-		b_fc2 = bias_variable([512])
+		W_fc2 = weight_variable([256+d, 128])
+		b_fc2 = bias_variable([128])
 		h_comb1 = tf.concat(1, [h_fc1, state_skel])
 		h_fc2 = tf.nn.relu(tf.matmul(h_comb1, W_fc2) + b_fc2)
 		h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 		#
-		W_fc3_qvalue = weight_variable([512, 1])
+		W_fc3_qvalue = weight_variable([128, 1])
 		b_fc3_qvalue = bias_variable([1])
 		h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
-		W_fc3_action = weight_variable([512, a])
+		W_fc3_action = weight_variable([128, a])
 		b_fc3_action = bias_variable([a])
 		h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 		# Optimizer

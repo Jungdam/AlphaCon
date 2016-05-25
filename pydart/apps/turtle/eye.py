@@ -16,7 +16,7 @@ import traceback
 EPS = 1E-6
 
 class Eye:
-	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=100, world=None, scene=None):
+	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=200, world=None, scene=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
@@ -105,7 +105,9 @@ class Eye:
 		self.frame = frame
 	def save_image(self, filename):
 		self.image.save(filename)
-	def get_image(self):
+	def get_image(self, frame=None):
+		if frame is not None:
+			self.update(frame)
 		im = ImageMath.eval("float(a)", a=self.image)
 		im = ImageMath.eval("a/255.0", a=im)
 		im = np.reshape(im, [self.w, self.h, 1])

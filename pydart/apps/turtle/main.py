@@ -388,7 +388,7 @@ def gen_scene(stride=3.0, size=10):
     pos = []
     radius = []
     for z in range(size):
-        pos.append(np.array([0, 1.0, z*stride+1.0]))
+        pos.append(np.array([0, 1.0, z*stride+2.0]))
         radius.append(0.5)
     return pos, radius
 scene_p, scene_r = gen_scene()
