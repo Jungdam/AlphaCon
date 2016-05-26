@@ -124,8 +124,8 @@ class DeepRL:
 			return
 		# Start trainning
 		for i in xrange(max_episode):
-			print '[ ', i, 'th episode ]',
-				'buffer_size:',self.buffer_size, 
+			print '[ ', i, 'th episode ]',\
+				'buffer_size:',self.buffer_size,\
 				'buffer_acum:',self.buffer_size_accum, 
 
 			self.init_step()
