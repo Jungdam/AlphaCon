@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import warnings
 import scene
+import math
 
 def flatten(l):
 	return list(_flatten_(l))
@@ -45,9 +46,11 @@ class DeepRL:
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.max_buffer_size = 50000
+		self.max_buffer_size = 10000
 		self.model_initialized = False
 		self.gamma = 0.9
+		self.init_exprolation_prob = 0.5
+		self.max_episode_generation = 100000
 		self.dropout_keep_prob = 0.5
 		self.sess = None
 		self.model_eval_qvalue = None
@@ -61,7 +64,6 @@ class DeepRL:
 		self.model_loss_qvalue = None
 		self.model_loss_action = None
 		self.model_dropout_keep_prob = None
-		
 	def has_model(self):
 		return self.model_initialized
 	def init_step(self):
@@ -71,6 +73,12 @@ class DeepRL:
 		# set new environment
 		self.scene.perturbate()
 		self.scene.update(self.skel.body('trunk').T)
+	def get_max_episode_generation(self):
+		return self.max_episode_generation
+	def get_exprolation_prob(self):
+		sigma_inv = 2.5
+		return self.init_exprolation_prob * \
+			math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_episode_generation))
 	def step(self):
 		eye = self.controller.get_eye()
 		# 
@@ -82,7 +90,7 @@ class DeepRL:
 		# set new action parameter
 		action_default = self.controller.get_action_default()
 		action_extra = self.eval_action(state_eye_init, state_skel_init)
-		action_extra = self.perturbate_action(action_extra, [0.25]*len(flatten(action_default)))
+		action_extra = self.perturbate_action(action_extra, [self.get_exprolation_prob()]*len(flatten(action_default)))
 		action = add_action(action_default, action_extra)
 		# print action
 		self.controller.add_action(action)
@@ -116,7 +124,10 @@ class DeepRL:
 			return
 		# Start trainning
 		for i in xrange(max_episode):
-			print '[ ', i, 'th episode ]', 'buffer_size:', self.buffer_size
+			print '[ ', i, 'th episode ]',
+				'buffer_size:',self.buffer_size, 
+				'buffer_acum:',self.buffer_size_accum, 
+
 			self.init_step()
 			# Generate trainning tuples
 			for j in xrange(max_iter):

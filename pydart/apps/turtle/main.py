@@ -16,6 +16,7 @@ import eye
 import deepRL
 import scene
 from PIL import Image
+import profile
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -41,6 +42,7 @@ state['DeepTrainningResultShowMax'] = 2
 state['DeepTrainningResultShowCnt'] = 2
 
 aero_force = []
+profile = profile.Profile()
 
 def apply_aerodynamics(skel):
     aero_force = []
@@ -137,7 +139,7 @@ def step_callback(world):
         world.reset()
         skel.controller.reset()
         scene.perturbate()
-        print '[DeepTrainning] end'
+        profile.print_time()
 
     if state['DeepControl']:
         if skel.controller.is_new_wingbeat():
@@ -153,7 +155,7 @@ def step_callback(world):
                 show_cnt -= 1
                 if show_cnt <= 0:
                     show_cnt = state['DeepTrainningResultShowMax']
-                    if deepRL.get_buffer_size_accumulated() > 100000:
+                    if deepRL.get_buffer_size_accumulated() > deepRL.get_max_episode_generation():
                         state['DeepTrainning'] = False
                         state['DeepControl'] = True
                     else:
@@ -326,6 +328,7 @@ def keyboard_callback(world, key):
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
         pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
+        profile.begin()
     elif key == 'g':
         state['DeepTrainning'] = False
         state['DeepControl'] = True
