@@ -90,6 +90,10 @@ class Controller:
             state.append(np.dot(R_trunk_inv,l))
             state.append(np.dot(R_trunk_inv,v))
         return np.array(state).flatten().tolist()
+    def get_action_size(self):
+        return len(self.action_default[0])+len(self.action_default[1])+1
+    def get_state_size(self):
+        return len(self.get_state())
     def get_eye(self):
         if self.eye is not None:
             self.eye.update(self.skel.body('trunk').T)

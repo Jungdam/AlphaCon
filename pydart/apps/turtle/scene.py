@@ -39,12 +39,12 @@ class Scene:
 		self.radius = radius[:]
 		self.size = len(pos)
 		self.hit = [False] * self.size
-	def perturbate(self, sigma_pos=[0.5, 0.5, 0.5], sigma_radius=0.01):
+	def perturbate(self, sigma_pos=[1.0, 1.0, 8.0], sigma_radius=0.01):
 		for i in range(self.size):
 			noise_pos = np.array([
-				np.random.normal(0.0, sigma_pos[0]),
-				np.random.normal(0.0, sigma_pos[1]),
-				np.random.normal(0.0, sigma_pos[2])])
+				np.random.uniform(-sigma_pos[0], sigma_pos[0]),
+				np.random.uniform(-sigma_pos[1], sigma_pos[1]),
+				np.random.uniform(-sigma_pos[2], sigma_pos[2])])
 			noise_radius = np.random.normal(0.0, sigma_radius)
 			self.pos[i] = self.pos_init[i] + noise_pos
 			self.radius[i] = self.radius_init[i] + noise_radius

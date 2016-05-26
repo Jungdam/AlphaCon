@@ -16,7 +16,7 @@ import traceback
 EPS = 1E-6
 
 class Eye:
-	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=200, world=None, scene=None):
+	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=1000, world=None, scene=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
