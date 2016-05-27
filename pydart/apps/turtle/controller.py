@@ -39,23 +39,6 @@ class Controller:
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
         self.time = 0.0
-        # # self.set_action_all(p)
-        # # d_l = np.array([-0.05552078,  0.17455198,  0.01879346,  0.08439687,  0.09147024, -0.16267498])
-        # # # d_t = 0.02435852
-        # # # d_l = np.array([ 0.19317016,  0.09538803,  0.15941522,  0.27894028, -0.11860695, -0.06225413])
-        # # d_l = np.array([ 0.529366  , -0.40631411, -0.56509792,  0.53919454, -0.15038238, -1.45177158])
-        # # d_l = np.array([-0.03953661, -0.08070696, -0.01347923,  0.01058312,  0.09924998, 0.11067133])
-        # # d_l = np.array([ 0.12364231,  0.12258705, -0.12238833,  0.11594259, -0.14220551, -0.07678395])
-        # # # d_l = np.array([-0.22361199, -0.24188249, -0.11789932,  0.25582372, -0.1583279 , 0.10787422])
-        # # d_l = np.array([-0.04504375, -0.14538448,  0.09693785,  0.00043086, -0.18594123, 0.01955406])
-        # d_l = np.array([-0.2779736 , -0.06742797, -0.04015606,  0.23646649, -0.14967497, -0.15978058])
-        # d_l = np.array([ 0.24432079,  0.1118376 ,  0.03513041,  0.28105493, -0.21508523, -0.15140349])
-        # d_r = np.array([d_l[0],d_l[1],-d_l[2],-d_l[3],-d_l[4],-d_l[5]])
-        # d_t = 0.0        
-        # l = np.array(self.action_default[0]) + d_l
-        # r = np.array(self.action_default[1]) + d_r
-        # t = self.action_default[2] + d_t
-        # self.set_action_all([l.tolist(),r.tolist(),t])
     def add_action(self, action):
         self.action.append(action)
     def set_action(self, action):
@@ -79,8 +62,8 @@ class Controller:
         R_trunk,p_trunk = mmMath.T2Rp(body_trunk.T)
         R_trunk_inv = inv(R_trunk)
         # trunk state 
-        # vel_trunk = body_trunk.world_com_velocity()
-        # state.append(np.dot(R_trunk_inv,vel_trunk))
+        vel_trunk = body_trunk.world_com_velocity()
+        state.append(np.dot(R_trunk_inv,vel_trunk))
         # other bodies state
         bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
         for name in bodies:

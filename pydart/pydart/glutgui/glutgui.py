@@ -137,7 +137,9 @@ def keyPressed(*args):
     global sim
     global keyboard_callback_func
     if keyboard_callback_func is not None:
-        keyboard_callback_func(sim, args[0])
+        handled = keyboard_callback_func(sim, args[0])
+        if handled:
+            return
     n = sim.num_frames()
     if args[0] == ESCAPE:
         glutDestroyWindow(window)

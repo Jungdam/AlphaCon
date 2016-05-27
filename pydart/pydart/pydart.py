@@ -30,7 +30,8 @@ class World(object):
                 self.add_skeleton_from_id(i, (i == nskels - 1))
         else:
             self.id = papi.createWorld(step)
-
+        self.state_stack = []
+        self.contact_history_stack = []
         self.reset()
 
     def destroy(self):
@@ -100,7 +101,12 @@ class World(object):
         papi.resetWorld(self.id)
         self._frame = 0
         self.contact_history = []
-        self.contact_history.append([])  # For the initial frame
+        if self.state_stack and self.contact_history_stack:
+            self.set_states(self.state_stack[-1])
+            self.contact_history.append(self.contact_history_stack[-1])
+            papi.stepWorld(self.id)
+        else:
+            self.contact_history.append([])  # For the initial frame
 
     def step(self):
         for skel in self.skels:
@@ -140,6 +146,15 @@ class World(object):
 
     def save(self, filename):
         return papi.saveWorldToFile(self.id, filename)
+
+    def push(self):
+        self.state_stack.append(self.states())
+        self.contact_history_stack.append(self.contact_history[-1])
+
+    def pop(self):
+        if self.state_stack and self.contact_history_stack:
+            self.state_stack.pop()
+            self.contact_history_stack.pop()
 
     def set_collision_pair(self, body1, body2, is_enable):
         flag_enable = 1 if is_enable else 0

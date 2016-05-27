@@ -1,8 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 import warnings
-
-name_list = []
+import datetime
 
 def weight_variable(shape):
   initial = tf.truncated_normal(shape, stddev=0.02)
@@ -18,13 +17,11 @@ def max_pool_2x2(x):
 class NNBase:
 	__metaclass__ = ABCMeta
 	def __init__(self, name):
-		if name in name_list:
-			warnings.warn('NN: duplicated name / '+name)
-			return
-		self.name = name
+		self.name = self.unique_name(name)
 		self.graph = tf.Graph()
 		self.initialized = False
 		self.sess = None
+		self.saver = None
 	@abstractmethod
 	# Define the neural network graph 
 	def initialize(self):
@@ -37,10 +34,24 @@ class NNBase:
 	# Evaluate the network for given input
 	def eval(self, data):
 		raise NotImplementedError("Must override")
-	@abstractmethod
 	# Compute loss value for given test data
+	@abstractmethod
 	def loss(self, data):
 		raise NotImplementedError("Must override")
+	def get_name(self):
+		return self.name
+	def unique_name(self, name):
+		date = datetime.date.today()
+		d = datetime.datetime.today()
+		return name+d.strftime("_%Y%m%d_%H%M%S")
+	def save_file(self, file_name=None):
+		if file_name is None:
+			file_name = self.name
+		self.saver.save(self.sess, file_name)
+	def load_file(self, file_name=None):
+		if file_name is None:
+			file_name = self.name
+		self.saver.restore(self.sess, file_name)
 
 class MyNN(NNBase):
 	def __init__(self, name):
@@ -70,21 +81,43 @@ class MyNN(NNBase):
 			target_qvalue = tf.placeholder(tf.float32, [None,1])
 			target_action = tf.placeholder(tf.float32, [None,a])
 			keep_prob = tf.placeholder(tf.float32)
+			
+			#
+			# Max Pool Model
+			#
+			# # Frist conv layer for the eye
+			# W_conv1 = weight_variable([5, 5, 1, 32])
+			# b_conv1 = bias_variable([32])
+			# h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
+			# h_pool1 = max_pool_2x2(h_conv1)
+			# # Second conv layer for the eye
+			# W_conv2 = weight_variable([5, 5, 32, 64])
+			# b_conv2 = bias_variable([64])
+			# h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+			# h_pool2 = max_pool_2x2(h_conv2)
+			# # Fully connected layer for the eye
+			# W_fc1 = weight_variable([(w/4)*(h/4)*64, 256])
+			# b_fc1 = bias_variable([256])
+			# h_pool2_flat = tf.reshape(h_pool2, [-1, (w/4)*(h/4)*64])
+			# h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+			
+			#
+			# No Pool Model
+			#
 			# Frist conv layer for the eye
-			W_conv1 = weight_variable([5, 5, 1, 32])
-			b_conv1 = bias_variable([32])
+			W_conv1 = weight_variable([10, 10, 1, 16])
+			b_conv1 = bias_variable([16])
 			h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
-			h_pool1 = max_pool_2x2(h_conv1)
 			# Second conv layer for the eye
-			W_conv2 = weight_variable([5, 5, 32, 64])
-			b_conv2 = bias_variable([64])
-			h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-			h_pool2 = max_pool_2x2(h_conv2)
+			W_conv2 = weight_variable([5, 5, 16, 32])
+			b_conv2 = bias_variable([32])
+			h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
 			# Fully connected layer for the eye
-			W_fc1 = weight_variable([(w/4)*(h/4)*64, 256])
+			W_fc1 = weight_variable([w*h*32, 256])
 			b_fc1 = bias_variable([256])
-			h_pool2_flat = tf.reshape(h_pool2, [-1, (w/4)*(h/4)*64])
-			h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+			h_covn2_flat = tf.reshape(h_conv2, [-1, w*h*32])
+			h_fc1 = tf.nn.relu(tf.matmul(h_covn2_flat, W_fc1) + b_fc1)
+
 			# Combined layer for the eye and the skel
 			W_fc2 = weight_variable([256+d, 128])
 			b_fc2 = bias_variable([128])
@@ -99,8 +132,8 @@ class MyNN(NNBase):
 			b_fc3_action = bias_variable([a])
 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 			# Optimizer
-			loss_qvalue = tf.reduce_mean(tf.square(target_qvalue - h_fc3_qvalue))
-			loss_action = tf.reduce_mean(tf.square(target_action - h_fc3_action))
+			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
+			loss_action = tf.reduce_mean(500.0*tf.square(target_action - h_fc3_action))
 			# Trainning
 			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
 			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
@@ -119,6 +152,7 @@ class MyNN(NNBase):
 			# Initialize all variables
 			self.sess = tf.Session(graph=self.graph)
 			self.sess.run(tf.initialize_all_variables())
+			self.saver = tf.train.Saver()
 			self.initialized = True
 	def train(self, data):
 		data_state_eye = data[0]

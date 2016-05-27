@@ -134,7 +134,7 @@ class Eye:
 		self.w = w
 		self.h = h
 	def render_callback(self):
-		if self.world is not None:
-			self.world.render()
+		# if self.world is not None:
+		# 	self.world.render()
 		if self.scene is not None:
 			self.scene.render()

@@ -4,6 +4,7 @@ import numpy as np
 import warnings
 import scene
 import math
+import action as ac
 
 def flatten(l):
 	return list(_flatten_(l))
@@ -27,16 +28,6 @@ def conv2d(x, W):
 def max_pool_2x2(x):
   return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                         strides=[1, 2, 2, 1], padding='SAME')
-def add_action(a, b):
-	return list([
-		(np.array(a[0])+np.array(b[0])).tolist(),
-		(np.array(a[1])+np.array(b[1])).tolist(),
-		a[2]+b[2]])
-def sub_action(a, b):
-	return list([
-		(np.array(a[0])-np.array(b[0])).tolist(),
-		(np.array(a[1])-np.array(b[1])).tolist(),
-		a[2]-b[2]])
 
 class DeepRLBase:
 	__metaclass__ = ABCMeta
@@ -44,9 +35,9 @@ class DeepRLBase:
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.warmup_size = 2000
-		self.max_buffer_size = 10000
-		self.max_data_gen = 1000000
+		self.warmup_size = 100
+		self.max_buffer_size = 50000
+		self.max_data_gen = 200000
 		self.sample_size = 50
 		self.discount_factor = 0.99
 		self.init_exprolation_prob = 0.1
@@ -102,6 +93,8 @@ class DeepRLBase:
 				pick_history.append(pick)
 			num_data += 1
 		return pick_history
+	def load_warmup_data(data):
+		self.replay_buffer += data
 	def get_exprolation_prob(self):
 		sigma_inv = 2.5
 		return self.init_exprolation_prob * \
@@ -109,14 +102,11 @@ class DeepRLBase:
 	def run(self, max_episode=100, max_iter=100):
 		# Start trainning
 		for i in xrange(max_episode):
-			print '[ ', i, 'th episode ]',\
-				'buffer_size:',self.buffer_size,\
-				'buffer_acum:',self.buffer_size_accum
 			self.init_step()
 			# Generate trainning tuples
 			for j in xrange(max_iter):
 				# print '\r', j, 'th iteration'
-				t = self.step()
+				t = self.step(self.get_exprolation_prob())
 				# print t is None
 				if t is None:
 					self.init_step()
@@ -129,6 +119,11 @@ class DeepRLBase:
 				# Update the network
 				data = self.sample(self.sample_idx())
 				self.update_model(data)
+			print '[ ', i, 'th episode ]',\
+				'buffer_size:',self.buffer_size,\
+				'buffer_acum:',self.buffer_size_accum,\
+				'warmup: ', self.buffer_size_accum <= self.warmup_size,
+			self.print_loss()
 
 class DeepRL(DeepRLBase):
 	def __init__(self, world, skel, scene, nn):
@@ -149,7 +144,7 @@ class DeepRL(DeepRLBase):
 		# set new environment
 		self.scene.perturbate()
 		self.scene.update(self.skel.body('trunk').T)
-	def step(self):
+	def step(self, sigma, full_random=False):
 		eye = self.controller.get_eye()
 		# 
 		state_eye_init = eye.get_image(self.skel.body('trunk').T)
@@ -159,10 +154,13 @@ class DeepRL(DeepRLBase):
 			return None
 		# set new action parameter
 		action_default = self.controller.get_action_default()
-		action_extra = self.get_action(state_eye_init, state_skel_init)
-		action_extra = self.perturbate_action( \
-			action_extra, [self.get_exprolation_prob()]*self.controller.get_action_size())
-		action = add_action(action_default, action_extra)
+		action_extra = []
+		if full_random:
+			action_extra = ac.zero()
+		else:
+			action_extra = self.get_action(state_eye_init, state_skel_init)
+		action_extra = ac.random([sigma]*ac.length(), action_extra)
+		action = ac.add(action_default, action_extra)
 		# print action
 		self.controller.add_action(action)
 		action_extra_flat = flatten(action_extra)
@@ -198,11 +196,6 @@ class DeepRL(DeepRLBase):
 			np.array(data_action),\
 			np.array(data_reward),\
 			np.array(data_state_eye_prime),np.array(data_state_skel_prime) ]
-	def perturbate_action(self, action, sigma):
-		action_flat = flatten(action)
-		for i in xrange(len(action_flat)):
-			action_flat[i] += np.random.normal(0.0, sigma[i])
-		return [action_flat[0:6],action_flat[6:12],action_flat[12]]
 	def check_terminatation(self, state_eye):
 		# No valid depth image
 		threshold = 0.99
@@ -278,7 +271,7 @@ class DeepRL(DeepRLBase):
 		if action_default is None:
 			return a
 		else:
-			return add_action(action_default,a)
+			return ac.add(action_default,a)
 	def get_qvalue(self, state_eye, state_skel):
 		s_eye = np.array([state_eye])
 		s_skel = np.array([state_skel])

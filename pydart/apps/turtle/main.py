@@ -18,6 +18,8 @@ import deepRL
 import scene
 from PIL import Image
 import profile
+import pickle
+import action as ac
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
@@ -41,6 +43,7 @@ state['DeepControl'] = False
 state['DeepTrainning'] = False
 state['DeepTrainningResultShowMax'] = 2
 state['DeepTrainningResultShowCnt'] = 2
+state['Test'] = True
 
 aero_force = []
 profile = profile.Profile()
@@ -134,8 +137,7 @@ def step_callback(world):
 
     if state['DeepTrainning']:
         print '[DeepTrainning] start'
-        deepRL.run(100, 10)
-        deepRL.print_loss()
+        rl.run(100, 10)
         state['DeepTrainning'] = False
         state['DeepControl'] = True
         world.reset()
@@ -148,14 +150,14 @@ def step_callback(world):
             skel.controller.get_eye().update(skel.body('trunk').T)
             state_eye = skel.controller.get_eye().get_image()
             state_skel = skel.controller.get_state()
-            action = deepRL.get_action(state_eye,state_skel, skel.controller.get_action_default())
+            action = rl.get_action(state_eye,state_skel, skel.controller.get_action_default())
             skel.controller.add_action(action)
-            if skel.controller.get_num_wingbeat() >= 15:
+            if skel.controller.get_num_wingbeat() >= 10:
                 show_cnt = state['DeepTrainningResultShowCnt']
                 show_cnt -= 1
                 if show_cnt <= 0:
                     show_cnt = state['DeepTrainningResultShowMax']
-                    if deepRL.get_buffer_size_accumulated() > deepRL.get_max_data_generation():
+                    if rl.get_buffer_size_accumulated() > rl.get_max_data_generation():
                         state['DeepTrainning'] = False
                         state['DeepControl'] = True
                     else:
@@ -165,6 +167,15 @@ def step_callback(world):
                 world.reset()
                 skel.controller.reset()
                 scene.perturbate()
+
+    if state['Test']:
+        if skel.controller.is_new_wingbeat():
+            global warmup_data_cnt
+            # world.reset()
+            t = warmup_data[warmup_data_cnt]
+            action = ac.add(skel.controller.get_action_default(), ac.format(t[2]))
+            skel.controller.add_action(action)
+            warmup_data_cnt = warmup_data_cnt + 1
 
     scene.update(skel.body('trunk').T)    
 
@@ -285,37 +296,10 @@ def keyboard_callback(world, key):
     elif key == 's':
         print('save world')
         world.save('test_world.txt')
+        mynn.save_file()
     elif key == 'r':
         world.reset()
         skel.controller.reset()
-    # elif key == 'f':
-    #     # for i in range(5):
-    #     #     data = deepRL.step()
-    #     #     if data is not None:
-    #     #         Image.fromarray(np.uint8(np.reshape(data[0],(100,100))*255)).save('./data/debug/t'+str(i)+'_a.png')
-    #     #         Image.fromarray(np.uint8(np.reshape(data[4],(100,100))*255)).save('./data/debug/t'+str(i)+'_b.png')
-    #     # eye = skel.controller.get_eye()
-    #     # eye.update(skel.body('trunk').T)
-    #     # # eye.save_image('test.png')
-    #     # state_eye = eye.get_image()
-    #     # state_skel = skel.controller.get_state()
-
-    #     # print state_skel
-    #     # print np.array([state_skel])
-
-    #     # print deepRL.eval_action(state_eye,state_skel)
-    #     # print deepRL.eval_qvalue(state_eye,state_skel)
-
-    #     # data = []
-    #     # for i in range(1):
-    #     #     print i
-    #     #     data.append(deepRL.step())
-    #     # deepRL.update_model(data)
-
-    #     # deepRL.run(10, 10)
-    #     # state['DeepTrainning'] = True
-    #     # state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
-    #     # pydart.glutgui.play(True)
     elif key == 'd':
         state['DeepTrainning'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
@@ -331,8 +315,31 @@ def keyboard_callback(world, key):
         scene.perturbate()
         pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
-    elif key == 'p':
+    elif key == '8':
         scene.perturbate()
+    elif key == 'w':
+        file_name = "warmup.txt"
+        f = open(file_name, 'w')
+        num_gen = 500000
+        sigma = 0.2
+        data = []
+        cnt = 0
+
+        rl.init_step()
+        while cnt < num_gen:
+            t = rl.step(sigma, True)
+            if t is None:
+                rl.init_step()
+            else:
+                data.append(t)
+                cnt += 1
+            if cnt%100 == 0:
+                print cnt, "data generated"
+        pickle.dump(data, f)
+        f.close()
+        exit()
+    elif key == '9':
+        print world.states()
     elif key == '0':
         print('test')
         # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
@@ -376,28 +383,56 @@ def keyboard_callback(world, key):
         # es.optimize(obj_func, verb_disp=1)
         # cma.pprint(es.result())
         print('-----------End Optimization-------------')
+    else:
+        return False
+    return True
 
 def gen_scene(stride=3.0, size=1):
     pos = []
     radius = []
     for z in range(size):
-        pos.append(np.array([0, 1.0, z*stride+10.0]))
+        pos.append(np.array([0, 1.0, z*stride+6.0]))
         radius.append(0.5)
     return pos, radius
 scene_p, scene_r = gen_scene()
 scene = scene.Scene(scene_p, scene_r)
 
+#
+# Initialize world and controller
+#
 world = pydart.create_world(dt, skel_file)
 # world.add_skeleton(wall_file)
 eye = eye.Eye(world=world,scene=scene)
 skel = world.skels[0]
 skel.controller = controller.Controller(world, skel, eye)
-
+#
+# Initialize nn and RL
+#
 mynn = nn.MyNN('net')
 mynn.initialize([eye.get_image_size(),\
     skel.controller.get_state_size(),\
     skel.controller.get_action_size()])
-deepRL = deepRL.DeepRL(world, skel, scene, mynn)
+rl = deepRL.DeepRL(world, skel, scene, mynn)
+#
+# Load warmup data for RL
+#
+# warmup_data_cnt = 0
+# warmup_data_file = "warmup_save.txt"
+# f = open(warmup_data_file, 'r')
+# warmup_data = pickle.load(f)
+# print "[Warmup data loaded]: ", len(warmup_data)
+#
+# Initialize character's dynamical state
+# : N number of wingbeat will be performed
+#
+num_init_wingbeat = 2
+while True:
+    if skel.controller.get_num_wingbeat() >= num_init_wingbeat:
+        world.push()
+        world.push()
+        break;
+    world.step()
+    apply_aerodynamics(skel)
 
 # Run the application
 if False:#'qt' in sys.argv:
