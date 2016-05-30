@@ -48,10 +48,12 @@ class NNBase:
 		if file_name is None:
 			file_name = self.name
 		self.saver.save(self.sess, file_name)
+		print '[NeuralNet] model saved', file_name
 	def load_file(self, file_name=None):
 		if file_name is None:
 			file_name = self.name
 		self.saver.restore(self.sess, file_name)
+		print '[NeuralNet] model loaded:', file_name
 
 class MyNN(NNBase):
 	def __init__(self, name):
@@ -133,7 +135,7 @@ class MyNN(NNBase):
 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 			# Optimizer
 			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
-			loss_action = tf.reduce_mean(500.0*tf.square(target_action - h_fc3_action))
+			loss_action = tf.reduce_mean(200.0*tf.square(target_action - h_fc3_action))
 			# Trainning
 			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
 			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)

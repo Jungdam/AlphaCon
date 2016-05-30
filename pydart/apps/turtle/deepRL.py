@@ -5,6 +5,7 @@ import warnings
 import scene
 import math
 import action as ac
+import pickle
 
 def flatten(l):
 	return list(_flatten_(l))
@@ -18,7 +19,7 @@ def _flatten_(*args):
             yield x
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.02)
+  initial = tf.truncated_normal(shape, stddev=0.05)
   return tf.Variable(initial)
 def bias_variable(shape):
   initial = tf.constant(0.02, shape=shape)
@@ -35,12 +36,12 @@ class DeepRLBase:
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.warmup_size = 100
-		self.max_buffer_size = 50000
-		self.max_data_gen = 200000
-		self.sample_size = 50
+		self.warmup_size = 200
+		self.max_buffer_size = 100000
+		self.max_data_gen = 500000
+		self.sample_size = 100
 		self.discount_factor = 0.99
-		self.init_exprolation_prob = 0.1
+		self.init_exprolation_prob = 0.2
 	def get_max_data_generation(self):
 		return self.max_data_gen
 	def get_buffer_size_accumulated(self):
@@ -93,20 +94,23 @@ class DeepRLBase:
 				pick_history.append(pick)
 			num_data += 1
 		return pick_history
-	def load_warmup_data(data):
-		self.replay_buffer += data
 	def get_exprolation_prob(self):
 		sigma_inv = 2.5
 		return self.init_exprolation_prob * \
 			math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_data_gen))
-	def run(self, max_episode=100, max_iter=100):
+	def is_warming_up(self):
+		return self.buffer_size_accum < self.warmup_size
+	def is_finished_trainning(self):
+		return self.buffer_size_accum >= self.max_data_gen
+	def run(self, max_episode=100, max_iter=100, batch_train_iter=1):
 		# Start trainning
 		for i in xrange(max_episode):
 			self.init_step()
 			# Generate trainning tuples
+			is_warming_up_start = self.is_warming_up()
 			for j in xrange(max_iter):
 				# print '\r', j, 'th iteration'
-				t = self.step(self.get_exprolation_prob())
+				t = self.step(self.get_exprolation_prob(),self.is_warming_up())
 				# print t is None
 				if t is None:
 					self.init_step()
@@ -114,17 +118,39 @@ class DeepRLBase:
 					self.replay_buffer.append(t)
 					self.buffer_size += 1
 					self.buffer_size_accum += 1
-			if self.buffer_size_accum > self.warmup_size:
+			is_warming_up_end = self.is_warming_up()
+			if is_warming_up_start != is_warming_up_end:
+				self.save_replay_buffer('warming_up_db.txt')
+			if not self.is_warming_up():
 				self.postprocess_replay_buffer()
 				# Update the network
-				data = self.sample(self.sample_idx())
-				self.update_model(data)
+				for k in xrange(batch_train_iter):
+					data = self.sample(self.sample_idx())
+					self.update_model(data)
 			print '[ ', i, 'th episode ]',\
 				'buffer_size:',self.buffer_size,\
 				'buffer_acum:',self.buffer_size_accum,\
-				'warmup: ', self.buffer_size_accum <= self.warmup_size,
+				'warmup:', self.is_warming_up(),
 			self.print_loss()
-
+	def reset(self):
+		del self.replay_buffer[:]
+		self.buffer_size = 0
+		self.buffer_size_accum = 0
+	def save_replay_buffer(self, file_name):
+		f = open(file_name, 'w')
+		pickle.dump(self.replay_buffer, f)
+		f.close()
+		print '[Replay Buffer]', self.buffer_size, 'data are saved:', file_name
+	def load_replay_buffer(self, file_name, append=False):
+		f = open(file_name, 'r')
+		data = pickle.load(f)
+		if not append:
+			self.reset()
+		self.replay_buffer += data
+		size = len(self.replay_buffer)
+		self.buffer_size += size
+		self.buffer_size_accum += size
+		print '[Replay Buffer]', size, 'data are loaded:', file_name
 class DeepRL(DeepRLBase):
 	def __init__(self, world, skel, scene, nn):
 		DeepRLBase.__init__(self)
@@ -133,10 +159,6 @@ class DeepRL(DeepRLBase):
 		self.controller = skel.controller
 		self.scene = scene
 		self.nn = nn
-	def reset(self):
-		del self.replay_buffer[:]
-		self.buffer_size = 0
-		self.buffer_size_accum = 0
 	def init_step(self):
 		# initialize world and controller
 		self.world.reset()

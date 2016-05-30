@@ -43,7 +43,7 @@ state['DeepControl'] = False
 state['DeepTrainning'] = False
 state['DeepTrainningResultShowMax'] = 2
 state['DeepTrainningResultShowCnt'] = 2
-state['Test'] = True
+state['Test'] = False
 
 aero_force = []
 profile = profile.Profile()
@@ -136,14 +136,16 @@ def step_callback(world):
     #     print 'velocity: ', skel.body('trunk').world_com_velocity()
 
     if state['DeepTrainning']:
-        print '[DeepTrainning] start'
-        rl.run(100, 10)
-        state['DeepTrainning'] = False
-        state['DeepControl'] = True
-        world.reset()
-        skel.controller.reset()
-        scene.perturbate()
-        profile.print_time()
+        if not rl.is_finished_trainning():
+            rl.run(100, 10, 10)
+            state['DeepTrainning'] = False
+            state['DeepControl'] = True
+            world.reset()
+            skel.controller.reset()
+            scene.perturbate()
+            profile.print_time()
+        if rl.is_finished_trainning():
+            mynn.save_file()
 
     if state['DeepControl']:
         if skel.controller.is_new_wingbeat():
@@ -157,7 +159,7 @@ def step_callback(world):
                 show_cnt -= 1
                 if show_cnt <= 0:
                     show_cnt = state['DeepTrainningResultShowMax']
-                    if rl.get_buffer_size_accumulated() > rl.get_max_data_generation():
+                    if rl.is_finished_trainning():
                         state['DeepTrainning'] = False
                         state['DeepControl'] = True
                     else:
@@ -294,12 +296,12 @@ def keyboard_callback(world, key):
         state['ImpulseDuration'] = 100
         print('push left')
     elif key == 's':
-        print('save world')
-        world.save('test_world.txt')
+        # world.save('test_world.txt')
         mynn.save_file()
     elif key == 'r':
         world.reset()
         skel.controller.reset()
+        scene.perturbate()
     elif key == 'd':
         state['DeepTrainning'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
@@ -315,8 +317,6 @@ def keyboard_callback(world, key):
         scene.perturbate()
         pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
-    elif key == '8':
-        scene.perturbate()
     elif key == 'w':
         file_name = "warmup.txt"
         f = open(file_name, 'w')
@@ -413,15 +413,16 @@ mynn.initialize([eye.get_image_size(),\
     skel.controller.get_state_size(),\
     skel.controller.get_action_size()])
 rl = deepRL.DeepRL(world, skel, scene, mynn)
-#
+
 # Load warmup data for RL
-#
-# warmup_data_cnt = 0
-# warmup_data_file = "warmup_save.txt"
-# f = open(warmup_data_file, 'r')
-# warmup_data = pickle.load(f)
-# print "[Warmup data loaded]: ", len(warmup_data)
-#
+warmup_data_cnt = 0
+warmup_data_file = "warming_up_db.txt"
+f = open(warmup_data_file, 'r')
+warmup_data = []
+if state['Test']:
+    pickle.load(f)
+    print "[Warmup data loaded]: ", len(warmup_data)
+
 # Initialize character's dynamical state
 # : N number of wingbeat will be performed
 #
