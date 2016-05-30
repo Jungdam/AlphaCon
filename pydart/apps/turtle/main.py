@@ -137,7 +137,7 @@ def step_callback(world):
 
     if state['DeepTrainning']:
         if not rl.is_finished_trainning():
-            rl.run(100, 10, 10)
+            rl.run(100, 10, 5)
             state['DeepTrainning'] = False
             state['DeepControl'] = True
             world.reset()
@@ -302,6 +302,12 @@ def keyboard_callback(world, key):
         world.reset()
         skel.controller.reset()
         scene.perturbate()
+    elif key == 'e':
+        state_eye = skel.controller.get_eye().get_image(skel.body('trunk').T)
+        state_skel = skel.controller.get_state()
+        action = rl.get_action(state_eye,state_skel)#,skel.controller.get_action_default())
+        print action
+        # skel.controller.add_action(action)
     elif key == 'd':
         state['DeepTrainning'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']

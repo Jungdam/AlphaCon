@@ -19,10 +19,10 @@ def _flatten_(*args):
             yield x
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.05)
+  initial = tf.truncated_normal(shape, stddev=0.1)
   return tf.Variable(initial)
 def bias_variable(shape):
-  initial = tf.constant(0.02, shape=shape)
+  initial = tf.constant(0.1, shape=shape)
   return tf.Variable(initial)
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -36,12 +36,12 @@ class DeepRLBase:
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.warmup_size = 200
-		self.max_buffer_size = 100000
+		self.warmup_size = 10000
+		self.max_buffer_size = 50000
 		self.max_data_gen = 500000
 		self.sample_size = 100
-		self.discount_factor = 0.99
-		self.init_exprolation_prob = 0.2
+		self.discount_factor = 0.95
+		self.init_exprolation_prob = 0.25
 	def get_max_data_generation(self):
 		return self.max_data_gen
 	def get_buffer_size_accumulated(self):

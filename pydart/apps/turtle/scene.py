@@ -25,7 +25,7 @@ class Scene:
 			if self.hit[i]:
 				cnt += 1
 		return float(cnt)
-	def update(self, transform, radius=0.5):
+	def update(self, transform, radius=0.25):
 		for i in range(self.size):
 			p = self.pos[i]
 			r = self.radius[i]+radius
