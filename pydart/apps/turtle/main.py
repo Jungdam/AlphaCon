@@ -139,14 +139,14 @@ def step_callback(world):
 
     if state['DeepTrainning']:
         if not rl.is_finished_trainning():
-            while rl.is_warming_up():
-                rl.run(50, 10, 2)
-            state['DeepTrainning'] = False
-            state['DeepControl'] = True
-            world.reset()
-            skel.controller.reset()
-            scene.perturbate()
-            profile.print_time()
+            rl.run(50, 10, 2)
+            if not rl.is_warming_up():
+                state['DeepTrainning'] = False
+                state['DeepControl'] = True
+                world.reset()
+                skel.controller.reset()
+                scene.perturbate()
+                profile.print_time()
         if rl.is_finished_trainning():
             mynn.save_file()
 
