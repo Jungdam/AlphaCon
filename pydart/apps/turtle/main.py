@@ -21,6 +21,8 @@ import profile
 import pickle
 import action as ac
 
+np.set_printoptions(threshold=np.nan,precision=4)
+
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
@@ -137,7 +139,8 @@ def step_callback(world):
 
     if state['DeepTrainning']:
         if not rl.is_finished_trainning():
-            rl.run(100, 10, 5)
+            while rl.is_warming_up():
+                rl.run(50, 10, 2)
             state['DeepTrainning'] = False
             state['DeepControl'] = True
             world.reset()
@@ -149,11 +152,12 @@ def step_callback(world):
 
     if state['DeepControl']:
         if skel.controller.is_new_wingbeat():
-            skel.controller.get_eye().update(skel.body('trunk').T)
-            state_eye = skel.controller.get_eye().get_image()
+            state_eye = skel.controller.get_eye().get_image(skel.body('trunk').T)
             state_skel = skel.controller.get_state()
-            action = rl.get_action(state_eye,state_skel, skel.controller.get_action_default())
+            action = rl.get_action(state_eye,state_skel,skel.controller.get_action_default())
             skel.controller.add_action(action)
+            qvalue = rl.get_qvalue(state_eye,state_skel)
+            print 'Q:', qvalue, 'A:', np.array(action)
             if skel.controller.get_num_wingbeat() >= 10:
                 show_cnt = state['DeepTrainningResultShowCnt']
                 show_cnt -= 1
@@ -179,7 +183,7 @@ def step_callback(world):
             skel.controller.add_action(action)
             warmup_data_cnt = warmup_data_cnt + 1
 
-    scene.update(skel.body('trunk').T)    
+    scene.update()
 
     # print 'time: ', world.time()
 
@@ -355,6 +359,8 @@ def keyboard_callback(world, key):
         eye = skel.controller.get_eye()
         eye.update(skel.body('trunk').T)
         eye.save_image('test.png')
+        im = eye.get_image()
+        print im
     elif key == 'o':
         print('-----------Start Optimization-----------')
         num_cores = multiprocessing.cpu_count()
@@ -392,25 +398,26 @@ def keyboard_callback(world, key):
     else:
         return False
     return True
+#
+# Initialize world and controller
+#
+world = pydart.create_world(dt, skel_file)
+skel = world.skels[0]
+# world.add_skeleton(wall_file)
 
 def gen_scene(stride=3.0, size=1):
     pos = []
     radius = []
     for z in range(size):
-        pos.append(np.array([0, 1.0, z*stride+6.0]))
+        pos.append(np.array([0, 1.0, z*stride+7.0]))
         radius.append(0.5)
     return pos, radius
 scene_p, scene_r = gen_scene()
-scene = scene.Scene(scene_p, scene_r)
+scene = scene.Scene(skel, scene_p, scene_r)
 
-#
-# Initialize world and controller
-#
-world = pydart.create_world(dt, skel_file)
-# world.add_skeleton(wall_file)
 eye = eye.Eye(world=world,scene=scene)
-skel = world.skels[0]
 skel.controller = controller.Controller(world, skel, eye)
+
 #
 # Initialize nn and RL
 #
@@ -418,16 +425,17 @@ mynn = nn.MyNN('net')
 mynn.initialize([eye.get_image_size(),\
     skel.controller.get_state_size(),\
     skel.controller.get_action_size()])
+# rl = deepRL.DeepRL(world, skel, scene, mynn, "warming_up_db.txt")
 rl = deepRL.DeepRL(world, skel, scene, mynn)
 
-# Load warmup data for RL
-warmup_data_cnt = 0
-warmup_data_file = "warming_up_db.txt"
-f = open(warmup_data_file, 'r')
-warmup_data = []
-if state['Test']:
-    pickle.load(f)
-    print "[Warmup data loaded]: ", len(warmup_data)
+# # Load warmup data for RL
+# warmup_data_cnt = 0
+# warmup_data_file = 'warming_up_db.txt'
+# f = open(warmup_data_file, 'r')
+# warmup_data = []
+# if state['Test']:
+#     warmup_data = pickle.load(f)
+#     print "[Warmup data loaded]: ", len(warmup_data)
 
 # Initialize character's dynamical state
 # : N number of wingbeat will be performed

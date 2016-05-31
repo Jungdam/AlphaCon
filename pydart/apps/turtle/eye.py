@@ -16,7 +16,7 @@ import traceback
 EPS = 1E-6
 
 class Eye:
-	def __init__(self, w=100, h=100, fov=120.0, near=0.5, far=1000, world=None, scene=None):
+	def __init__(self, w=64, h=64, fov=120.0, near=0.5, far=10, world=None, scene=None):
 		self.w = w
 		self.h = h
 		self.fov = fov
@@ -73,7 +73,8 @@ class Eye:
 		glMatrixMode(GL_PROJECTION)
 		glPushMatrix()
 		glLoadIdentity()
-		gluPerspective(self.fov, self.aspect, self.near, self.far)
+		# gluPerspective(self.fov, self.aspect, self.near, self.far)
+		glOrtho(-5,5,-5,5,self.near,self.far)
 		# Modelview matrix setup
 		# Calcuate camera transformation from current frame
 		glMatrixMode( GL_MODELVIEW )
@@ -110,8 +111,7 @@ class Eye:
 			self.update(frame)
 		im = ImageMath.eval("float(a)", a=self.image)
 		im = ImageMath.eval("a/255.0", a=im)
-		im = np.reshape(im, [self.w, self.h, 1])
-		return im
+		return np.reshape(im, [self.w, self.h, 1])
 	def get_image_size(self):
 		return (self.w, self.h)
 	# def get_depth_image(self):

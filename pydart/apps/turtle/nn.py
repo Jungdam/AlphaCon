@@ -4,10 +4,10 @@ import warnings
 import datetime
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.02)
+  initial = tf.truncated_normal(shape, stddev=0.1)
   return tf.Variable(initial)
 def bias_variable(shape):
-  initial = tf.constant(0.02, shape=shape)
+  initial = tf.truncated_normal(shape, stddev=0.1)
   return tf.Variable(initial)
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -38,6 +38,7 @@ class NNBase:
 	@abstractmethod
 	def loss(self, data):
 		raise NotImplementedError("Must override")
+
 	def get_name(self):
 		return self.name
 	def unique_name(self, name):
@@ -107,11 +108,11 @@ class MyNN(NNBase):
 			# No Pool Model
 			#
 			# Frist conv layer for the eye
-			W_conv1 = weight_variable([10, 10, 1, 16])
+			W_conv1 = weight_variable([4, 4, 1, 16])
 			b_conv1 = bias_variable([16])
 			h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
 			# Second conv layer for the eye
-			W_conv2 = weight_variable([5, 5, 16, 32])
+			W_conv2 = weight_variable([2, 2, 16, 32])
 			b_conv2 = bias_variable([32])
 			h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
 			# Fully connected layer for the eye
@@ -121,24 +122,26 @@ class MyNN(NNBase):
 			h_fc1 = tf.nn.relu(tf.matmul(h_covn2_flat, W_fc1) + b_fc1)
 
 			# Combined layer for the eye and the skel
-			W_fc2 = weight_variable([256+d, 128])
-			b_fc2 = bias_variable([128])
+			W_fc2 = weight_variable([256+d, 512])
+			b_fc2 = bias_variable([512])
 			h_comb1 = tf.concat(1, [h_fc1, state_skel])
 			h_fc2 = tf.nn.relu(tf.matmul(h_comb1, W_fc2) + b_fc2)
 			h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 			#
-			W_fc3_qvalue = weight_variable([128, 1])
+			W_fc3_qvalue = weight_variable([512, 1])
 			b_fc3_qvalue = bias_variable([1])
 			h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
-			W_fc3_action = weight_variable([128, a])
+			W_fc3_action = weight_variable([512, a])
 			b_fc3_action = bias_variable([a])
 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 			# Optimizer
 			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
-			loss_action = tf.reduce_mean(200.0*tf.square(target_action - h_fc3_action))
+			loss_action = tf.reduce_mean(100.0*tf.square(target_action - h_fc3_action))
 			# Trainning
-			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
-			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
+			self.train_q = tf.train.AdamOptimizer(1e-3).minimize(loss_qvalue)
+			self.train_a = tf.train.AdamOptimizer(1e-3).minimize(loss_action)
+			# self.train_q = tf.train.GradientDescentOptimizer(0.001).minimize(loss_qvalue)
+			# self.train_a = tf.train.GradientDescentOptimizer(0.001).minimize(loss_action)
 			# Evaultion
 			self.eval_q = h_fc3_qvalue
 			self.eval_a = h_fc3_action
@@ -166,8 +169,6 @@ class MyNN(NNBase):
 		self.train_action([\
 			data_state_eye,data_state_skel,target_action])
 	def eval(self, data):
-		data_state_eye = data[0]
-		data_state_skel = data[1]
 		q = self.eval_qvalue(data)
 		a = self.eval_action(data)
 		return q, a
@@ -186,11 +187,9 @@ class MyNN(NNBase):
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def eval_action(self, data):
-		a = data[0]
-		b = data[1]
 		val = self.sess.run(self.eval_a, feed_dict={
-			self.placeholder_eye: a,
-			self.placeholder_skel: b,
+			self.placeholder_eye: data[0],
+			self.placeholder_skel: data[1],
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def loss_qvalue(self, data):

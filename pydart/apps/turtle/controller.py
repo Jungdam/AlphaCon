@@ -78,9 +78,6 @@ class Controller:
     def get_state_size(self):
         return len(self.get_state())
     def get_eye(self):
-        if self.eye is not None:
-            self.eye.update(self.skel.body('trunk').T)
-            # self.eye.save_image('image'+str(self.cnt_wingbeat)+'.png')
         return self.eye
     def reset_tau_sum(self):
         self.tau_sum = 0.0

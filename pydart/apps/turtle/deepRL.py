@@ -18,30 +18,21 @@ def _flatten_(*args):
         else:
             yield x
 
-def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
-def bias_variable(shape):
-  initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
-def conv2d(x, W):
-  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
-def max_pool_2x2(x):
-  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                        strides=[1, 2, 2, 1], padding='SAME')
-
 class DeepRLBase:
 	__metaclass__ = ABCMeta
-	def __init__(self):
+	def __init__(self, warmup_file=None):
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.warmup_size = 10000
-		self.max_buffer_size = 50000
+		self.warmup_size = 50000
+		self.max_buffer_size = 60000
 		self.max_data_gen = 500000
 		self.sample_size = 100
-		self.discount_factor = 0.95
-		self.init_exprolation_prob = 0.25
+		self.discount_factor = 0.99
+		self.init_exprolation_prob = 0.2
+		self.warmup_file = warmup_file
+		if self.warmup_file is not None:
+			self.load_replay_buffer(self.warmup_file)
 	def get_max_data_generation(self):
 		return self.max_data_gen
 	def get_buffer_size_accumulated(self):
@@ -70,15 +61,16 @@ class DeepRLBase:
 	@abstractmethod
 	def update_model(self, data):
 		raise NotImplementedError("Must override")
+	@abstractmethod
+	def sample(self, idx):
+		raise NotImplementedError("Must override")
+
 	def postprocess_replay_buffer(self):
 		max_size = self.max_buffer_size
 		cur_size = self.buffer_size
 		if cur_size > max_size:
 			del self.replay_buffer[0:cur_size-max_size]
 			self.buffer_size = max_size
-	@abstractmethod
-	def sample(self, idx):
-		raise NotImplementedError("Must override")
 	def sample_idx(self, sample_size=None):
 		pick_history = []
 		num_data = 0
@@ -95,9 +87,12 @@ class DeepRLBase:
 			num_data += 1
 		return pick_history
 	def get_exprolation_prob(self):
-		sigma_inv = 2.5
-		return self.init_exprolation_prob * \
-			math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_data_gen))
+		if self.is_warming_up():
+			return self.init_exprolation_prob
+		else:
+			sigma_inv = 1.0
+			return 0.1*self.init_exprolation_prob * \
+				math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_data_gen))
 	def is_warming_up(self):
 		return self.buffer_size_accum < self.warmup_size
 	def is_finished_trainning(self):
@@ -120,7 +115,7 @@ class DeepRLBase:
 					self.buffer_size_accum += 1
 			is_warming_up_end = self.is_warming_up()
 			if is_warming_up_start != is_warming_up_end:
-				self.save_replay_buffer('warming_up_db.txt')
+				self.save_replay_buffer('__warming_up_db.txt')
 			if not self.is_warming_up():
 				self.postprocess_replay_buffer()
 				# Update the network
@@ -131,7 +126,10 @@ class DeepRLBase:
 				'buffer_size:',self.buffer_size,\
 				'buffer_acum:',self.buffer_size_accum,\
 				'warmup:', self.is_warming_up(),
-			self.print_loss()
+			if not self.is_warming_up():
+				self.print_loss()
+			else:
+				print ' '
 	def reset(self):
 		del self.replay_buffer[:]
 		self.buffer_size = 0
@@ -152,8 +150,8 @@ class DeepRLBase:
 		self.buffer_size_accum += size
 		print '[Replay Buffer]', size, 'data are loaded:', file_name
 class DeepRL(DeepRLBase):
-	def __init__(self, world, skel, scene, nn):
-		DeepRLBase.__init__(self)
+	def __init__(self, world, skel, scene, nn, warmup_file=None):
+		DeepRLBase.__init__(self, warmup_file)
 		self.world = world
 		self.skel = skel
 		self.controller = skel.controller
@@ -165,7 +163,7 @@ class DeepRL(DeepRLBase):
 		self.controller.reset()
 		# set new environment
 		self.scene.perturbate()
-		self.scene.update(self.skel.body('trunk').T)
+		self.scene.update()
 	def step(self, sigma, full_random=False):
 		eye = self.controller.get_eye()
 		# 
@@ -188,7 +186,7 @@ class DeepRL(DeepRLBase):
 		action_extra_flat = flatten(action_extra)
 		while True:
 			self.world.step()
-			self.scene.update(self.skel.body('trunk').T)
+			self.scene.update()
 			if self.controller.is_new_wingbeat():
 				break
 		state_eye_term = eye.get_image(self.skel.body('trunk').T)
@@ -245,9 +243,8 @@ class DeepRL(DeepRLBase):
 
 		target_qvalue = data_reward + self.discount_factor*q
 		target_action = data_action
-
 		return target_qvalue, target_action
-	def print_loss(self, sample_size=200):
+	def print_loss(self, sample_size=100):
 		data = self.sample(self.sample_idx(sample_size))
 		data_state_eye = data[0]
 		data_state_skel = data[1]
@@ -266,7 +263,10 @@ class DeepRL(DeepRLBase):
 		q = self.nn.loss_qvalue([data_state_eye,data_state_skel,target_qvalue])
 		a = self.nn.loss_action([data_state_eye,data_state_skel,target_action])
 
-		print 'Loss values: ', 'qvalue:', q, 'action:', a
+		print 'Loss values: ', \
+			'qvalue:', q, \
+			'action:', a, \
+			'exp:', np.array(self.get_exprolation_prob())
 	def update_model(self, data, print_loss=False):
 		data_state_eye = data[0]
 		data_state_skel = data[1]
@@ -281,10 +281,28 @@ class DeepRL(DeepRLBase):
 				data_state_skel_prime,
 				data_action,
 				data_reward])
+		self.nn.train_qvalue([data_state_eye,data_state_skel,target_qvalue])
 
-		self.nn.train([ \
-			data_state_eye,data_state_skel,
-			target_qvalue,target_action])
+		target_qvalue, target_action = \
+			self.compute_target_value([
+				data_state_eye_prime,
+				data_state_skel_prime,
+				data_action,
+				data_reward])
+		qvalue = self.nn.eval_qvalue([data_state_eye, data_state_skel])
+		dse = []
+		dss = []
+		ta = []
+		for i in range(len(data_state_eye)):
+			if target_qvalue[i][0] > qvalue[i][0]:
+				dse.append(data_state_eye[i])
+				dss.append(data_state_skel[i])
+				ta.append(target_action[i])
+		if len(ta)>0:
+			self.nn.train_action([dse,dss,ta])
+		# self.nn.train([ \
+		# 	data_state_eye,data_state_skel,
+		# 	target_qvalue,target_action])
 	def get_action(self, state_eye, state_skel, action_default=None):
 		s_eye = np.array([state_eye])
 		s_skel = np.array([state_skel])
