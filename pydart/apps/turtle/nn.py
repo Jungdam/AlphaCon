@@ -4,10 +4,10 @@ import warnings
 import datetime
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
+  initial = tf.truncated_normal(shape, stddev=0.05)
   return tf.Variable(initial)
 def bias_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.1)
+  initial = tf.truncated_normal(shape, stddev=0.05)
   return tf.Variable(initial)
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -55,8 +55,176 @@ class NNBase:
 			file_name = self.name
 		self.saver.restore(self.sess, file_name)
 		print '[NeuralNet] model loaded:', file_name
+	def summary(self):
+		summary_op = tf.merge_all_summaries()
+		summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+		summary_str = sess.run(summary_op, feed_dict=feed_dict)
+		summary_writer.add_summary(summary_str, step)
+		
+# class MyNN(NNBase):
+# 	def __init__(self, name):
+# 		NNBase.__init__(self, name)
+# 		self.dropout_keep_prob = 0.5
+# 		self.train_a = None
+# 		self.train_q = None
+# 		self.eval_q = None
+# 		self.eval_a = None
+# 		self.placeholder_eye = None
+# 		self.placeholder_skel = None
+# 		self.placeholder_target_qvalue = None
+# 		self.placeholder_target_action = None
+# 		self.placeholder_dropout_keep_prob = None
+# 		self.loss_q = None
+# 		self.loss_a = None
+# 	def initialize(self, data):
+# 		tf.reset_default_graph()
+# 		with self.graph.as_default():
+# 			w,h = data[0] 	# image dimension
+# 			d = data[1]		# state dimension
+# 			a = data[2]		# action dimension
+# 			print w, h, d, a
+# 			# 
+# 			state_eye = tf.placeholder(tf.float32, [None,w,h,1])
+# 			state_skel = tf.placeholder(tf.float32, [None,d])
+# 			target_qvalue = tf.placeholder(tf.float32, [None,1])
+# 			target_action = tf.placeholder(tf.float32, [None,a])
+# 			keep_prob = tf.placeholder(tf.float32)
+			
+# 			#
+# 			# Max Pool Model
+# 			#
+# 			# # Frist conv layer for the eye
+# 			# W_conv1 = weight_variable([5, 5, 1, 32])
+# 			# b_conv1 = bias_variable([32])
+# 			# h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
+# 			# h_pool1 = max_pool_2x2(h_conv1)
+# 			# # Second conv layer for the eye
+# 			# W_conv2 = weight_variable([5, 5, 32, 64])
+# 			# b_conv2 = bias_variable([64])
+# 			# h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+# 			# h_pool2 = max_pool_2x2(h_conv2)
+# 			# # Fully connected layer for the eye
+# 			# W_fc1 = weight_variable([(w/4)*(h/4)*64, 256])
+# 			# b_fc1 = bias_variable([256])
+# 			# h_pool2_flat = tf.reshape(h_pool2, [-1, (w/4)*(h/4)*64])
+# 			# h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+			
+# 			#
+# 			# No Pool Model
+# 			#
+# 			# Frist conv layer for the eye
+# 			W_conv1 = weight_variable([4, 4, 1, 32])
+# 			b_conv1 = bias_variable([32])
+# 			h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
+# 			# Second conv layer for the eye
+# 			W_conv2 = weight_variable([2, 2, 32, 64])
+# 			b_conv2 = bias_variable([64])
+# 			h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
+# 			# Fully connected layer for the eye
+# 			W_fc1 = weight_variable([w*h*64, 512])
+# 			b_fc1 = bias_variable([512])
+# 			h_covn2_flat = tf.reshape(h_conv2, [-1, w*h*64])
+# 			h_fc1 = tf.nn.relu(tf.matmul(h_covn2_flat, W_fc1) + b_fc1)
 
-class MyNN(NNBase):
+# 			# Combined layer for the eye and the skel
+# 			W_fc2 = weight_variable([512+d, 1024])
+# 			b_fc2 = bias_variable([1024])
+# 			h_comb1 = tf.concat(1, [h_fc1, state_skel])
+# 			h_fc2 = tf.nn.relu(tf.matmul(h_comb1, W_fc2) + b_fc2)
+# 			h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+# 			#
+# 			W_fc3_qvalue = weight_variable([1024, 1])
+# 			b_fc3_qvalue = bias_variable([1])
+# 			h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
+# 			W_fc3_action = weight_variable([1024, a])
+# 			b_fc3_action = bias_variable([a])
+# 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
+# 			# Optimizer
+# 			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
+# 			loss_action = tf.reduce_mean(100.0*tf.square(target_action - h_fc3_action))
+# 			# Trainning
+# 			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
+# 			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
+# 			# self.train_q = tf.train.GradientDescentOptimizer(0.001).minimize(loss_qvalue)
+# 			# self.train_a = tf.train.GradientDescentOptimizer(0.001).minimize(loss_action)
+# 			# Evaultion
+# 			self.eval_q = h_fc3_qvalue
+# 			self.eval_a = h_fc3_action
+# 			# Place holders
+# 			self.placeholder_eye = state_eye
+# 			self.placeholder_skel = state_skel
+# 			self.placeholder_target_qvalue = target_qvalue
+# 			self.placeholder_target_action = target_action
+# 			self.placeholder_dropout_keep_prob = keep_prob
+# 			# Loss
+# 			self.loss_q = loss_qvalue
+# 			self.loss_a = loss_action
+# 			# Initialize all variables
+# 			self.sess = tf.Session(graph=self.graph)
+# 			self.sess.run(tf.initialize_all_variables())
+# 			self.saver = tf.train.Saver()
+# 			self.initialized = True
+# 	def train(self, data):
+# 		data_state_eye = data[0]
+# 		data_state_skel = data[1]
+# 		target_qvalue = data[2]
+# 		target_action = data[3]
+# 		self.train_qvalue([\
+# 			data_state_eye,data_state_skel,target_qvalue])
+# 		self.train_action([\
+# 			data_state_eye,data_state_skel,target_action])
+# 	def eval(self, data):
+# 		q = self.eval_qvalue(data)
+# 		a = self.eval_action(data)
+# 		return q, a
+# 	def loss(self, data):
+# 		data_state_eye = data[0]
+# 		data_state_skel = data[1]
+# 		target_qvalue = data[2]
+# 		target_action = data[3]
+# 		q = self.loss_qvalue([data_state_eye, data_state_skel, target_qvalue])
+# 		a = self.loss_action([data_state_eye, data_state_skel, target_action])
+# 		return q, a
+# 	def eval_qvalue(self, data):
+# 		val = self.sess.run(self.eval_q, feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_dropout_keep_prob: 1.0})
+# 		return val
+# 	def eval_action(self, data):
+# 		val = self.sess.run(self.eval_a, feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_dropout_keep_prob: 1.0})
+# 		return val
+# 	def loss_qvalue(self, data):
+# 		val = self.sess.run(self.loss_q,feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_target_qvalue: data[2],
+# 			self.placeholder_dropout_keep_prob: 1.0})
+# 		return val
+# 	def loss_action(self, data):
+# 		val = self.sess.run(self.loss_a,feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_target_action: data[2],
+# 			self.placeholder_dropout_keep_prob: 1.0})
+# 		return val
+# 	def train_qvalue(self, data):
+# 		self.sess.run(self.train_q, feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_target_qvalue: data[2],
+# 			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})
+# 	def train_action(self, data):
+# 		self.sess.run(self.train_a, feed_dict={
+# 			self.placeholder_eye: data[0],
+# 			self.placeholder_skel: data[1],
+# 			self.placeholder_target_action: data[2],
+# 			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})
+
+class MyNNSimple(NNBase):
 	def __init__(self, name):
 		NNBase.__init__(self, name)
 		self.dropout_keep_prob = 0.5
@@ -64,7 +232,7 @@ class MyNN(NNBase):
 		self.train_q = None
 		self.eval_q = None
 		self.eval_a = None
-		self.placeholder_eye = None
+		self.placeholder_sensor = None
 		self.placeholder_skel = None
 		self.placeholder_target_qvalue = None
 		self.placeholder_target_action = None
@@ -74,79 +242,46 @@ class MyNN(NNBase):
 	def initialize(self, data):
 		tf.reset_default_graph()
 		with self.graph.as_default():
-			w,h = data[0] 	# image dimension
+			s = data[0] 	# sensor dimension
 			d = data[1]		# state dimension
 			a = data[2]		# action dimension
-			print w, h, d, a
 			# 
-			state_eye = tf.placeholder(tf.float32, [None,w,h,1])
+			state_sensor = tf.placeholder(tf.float32, [None,s])
 			state_skel = tf.placeholder(tf.float32, [None,d])
 			target_qvalue = tf.placeholder(tf.float32, [None,1])
 			target_action = tf.placeholder(tf.float32, [None,a])
 			keep_prob = tf.placeholder(tf.float32)
-			
-			#
-			# Max Pool Model
-			#
-			# # Frist conv layer for the eye
-			# W_conv1 = weight_variable([5, 5, 1, 32])
-			# b_conv1 = bias_variable([32])
-			# h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
-			# h_pool1 = max_pool_2x2(h_conv1)
-			# # Second conv layer for the eye
-			# W_conv2 = weight_variable([5, 5, 32, 64])
-			# b_conv2 = bias_variable([64])
-			# h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-			# h_pool2 = max_pool_2x2(h_conv2)
-			# # Fully connected layer for the eye
-			# W_fc1 = weight_variable([(w/4)*(h/4)*64, 256])
-			# b_fc1 = bias_variable([256])
-			# h_pool2_flat = tf.reshape(h_pool2, [-1, (w/4)*(h/4)*64])
-			# h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
-			
-			#
-			# No Pool Model
-			#
-			# Frist conv layer for the eye
-			W_conv1 = weight_variable([4, 4, 1, 16])
-			b_conv1 = bias_variable([16])
-			h_conv1 = tf.nn.relu(conv2d(state_eye, W_conv1) + b_conv1)
-			# Second conv layer for the eye
-			W_conv2 = weight_variable([2, 2, 16, 32])
-			b_conv2 = bias_variable([32])
-			h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
-			# Fully connected layer for the eye
-			W_fc1 = weight_variable([w*h*32, 256])
-			b_fc1 = bias_variable([256])
-			h_covn2_flat = tf.reshape(h_conv2, [-1, w*h*32])
-			h_fc1 = tf.nn.relu(tf.matmul(h_covn2_flat, W_fc1) + b_fc1)
 
-			# Combined layer for the eye and the skel
-			W_fc2 = weight_variable([256+d, 512])
-			b_fc2 = bias_variable([512])
-			h_comb1 = tf.concat(1, [h_fc1, state_skel])
-			h_fc2 = tf.nn.relu(tf.matmul(h_comb1, W_fc2) + b_fc2)
+			# Combined layer for the sensor and the skel
+			h_comb1 = tf.concat(1, [state_sensor, state_skel])
+			W_fc1 = weight_variable([s+d, 512])
+			b_fc1 = bias_variable([512])
+			h_fc1 = tf.nn.relu(tf.matmul(h_comb1, W_fc1) + b_fc1)
+			# Combined layer for the sensor and the skel
+			W_fc2 = weight_variable([512, 256])
+			b_fc2 = bias_variable([256])
+			h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 			h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 			#
-			W_fc3_qvalue = weight_variable([512, 1])
+			W_fc3_qvalue = weight_variable([256, 1])
 			b_fc3_qvalue = bias_variable([1])
 			h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
-			W_fc3_action = weight_variable([512, a])
+			W_fc3_action = weight_variable([256, a])
 			b_fc3_action = bias_variable([a])
 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 			# Optimizer
 			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
 			loss_action = tf.reduce_mean(100.0*tf.square(target_action - h_fc3_action))
 			# Trainning
-			self.train_q = tf.train.AdamOptimizer(1e-3).minimize(loss_qvalue)
-			self.train_a = tf.train.AdamOptimizer(1e-3).minimize(loss_action)
+			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
+			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
 			# self.train_q = tf.train.GradientDescentOptimizer(0.001).minimize(loss_qvalue)
 			# self.train_a = tf.train.GradientDescentOptimizer(0.001).minimize(loss_action)
 			# Evaultion
 			self.eval_q = h_fc3_qvalue
 			self.eval_a = h_fc3_action
 			# Place holders
-			self.placeholder_eye = state_eye
+			self.placeholder_sensor = state_sensor
 			self.placeholder_skel = state_skel
 			self.placeholder_target_qvalue = target_qvalue
 			self.placeholder_target_action = target_action
@@ -160,61 +295,61 @@ class MyNN(NNBase):
 			self.saver = tf.train.Saver()
 			self.initialized = True
 	def train(self, data):
-		data_state_eye = data[0]
+		data_state_sensor = data[0]
 		data_state_skel = data[1]
 		target_qvalue = data[2]
 		target_action = data[3]
 		self.train_qvalue([\
-			data_state_eye,data_state_skel,target_qvalue])
+			data_state_sensor,data_state_skel,target_qvalue])
 		self.train_action([\
-			data_state_eye,data_state_skel,target_action])
+			data_state_sensor,data_state_skel,target_action])
 	def eval(self, data):
 		q = self.eval_qvalue(data)
 		a = self.eval_action(data)
 		return q, a
 	def loss(self, data):
-		data_state_eye = data[0]
+		data_state_sensor = data[0]
 		data_state_skel = data[1]
 		target_qvalue = data[2]
 		target_action = data[3]
-		q = self.loss_qvalue([data_state_eye, data_state_skel, target_qvalue])
-		a = self.loss_action([data_state_eye, data_state_skel, target_action])
+		q = self.loss_qvalue([data_state_sensor, data_state_skel, target_qvalue])
+		a = self.loss_action([data_state_sensor, data_state_skel, target_action])
 		return q, a
 	def eval_qvalue(self, data):
 		val = self.sess.run(self.eval_q, feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def eval_action(self, data):
 		val = self.sess.run(self.eval_a, feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def loss_qvalue(self, data):
 		val = self.sess.run(self.loss_q,feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_target_qvalue: data[2],
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def loss_action(self, data):
 		val = self.sess.run(self.loss_a,feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_target_action: data[2],
 			self.placeholder_dropout_keep_prob: 1.0})
 		return val
 	def train_qvalue(self, data):
 		self.sess.run(self.train_q, feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_target_qvalue: data[2],
 			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})
 	def train_action(self, data):
 		self.sess.run(self.train_a, feed_dict={
-			self.placeholder_eye: data[0],
+			self.placeholder_sensor: data[0],
 			self.placeholder_skel: data[1],
 			self.placeholder_target_action: data[2],
 			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})

@@ -28,12 +28,13 @@ def random(sigma, action=None):
 	d = len(sigma)
 	a = [0.0]*d
 	for i in xrange(d):
-		a[i] += np.random.uniform(-sigma[i], sigma[i])
-	r = [a[0:dim_l],a[dim_l:(dim_r+dim_l)],a[dim_r+dim_l]]
+		# a[i] = np.random.uniform(-sigma[i], sigma[i])
+		a[i] = np.random.normal(0.0, sigma[i])
+	r = [a[0:dim_l],a[dim_l:(dim_l+dim_r)],a[dim_l+dim_r]]
 	if action is None:
 		return r
 	else:
-		return add(r, a)
+		return add(r, action)
 def zero():
 	return [[0.0]*dim_l,[0.0]*dim_r,0.0]
 def length():
@@ -43,4 +44,4 @@ def flat(a):
 def format(a):
 	return [a[0:dim_l],a[dim_l:dim_r+dim_l],a[dim_r+dim_l]]
 def pprint(a):
-	print np.array(a)
+	print np.array(a[0]), np.array(a[1]), np.array([a[2]])

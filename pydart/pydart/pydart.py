@@ -108,10 +108,11 @@ class World(object):
         else:
             self.contact_history.append([])  # For the initial frame
 
-    def step(self):
-        for skel in self.skels:
-            if skel.controller is not None:
-                skel.tau = skel.controller.compute()
+    def step(self, apply_controller=True):
+        if apply_controller:
+            for skel in self.skels:
+                if skel.controller is not None:
+                    skel.tau = skel.controller.compute()
 
         papi.stepWorld(self.id)
         self._frame += 1

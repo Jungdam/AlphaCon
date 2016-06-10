@@ -110,7 +110,7 @@ class Eye:
 		if frame is not None:
 			self.update(frame)
 		im = ImageMath.eval("float(a)", a=self.image)
-		im = ImageMath.eval("a/255.0", a=im)
+		im = ImageMath.eval("1.0-a/255.0", a=im)
 		return np.reshape(im, [self.w, self.h, 1])
 	def get_image_size(self):
 		return (self.w, self.h)
