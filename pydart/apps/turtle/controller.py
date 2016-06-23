@@ -22,6 +22,7 @@ class Controller:
         #     [0.24432079, 0.1118376, -0.03513041, -0.28105493, 0.21508523, 0.15140349], 1.5]
         self.action_default = [[-1.25567921, 0.6118376, 0.53513041, 0.28105493, 0.78491477, -0.65140349],\
             [-1.25567921, 0.6118376, -0.53513041, -0.28105493, -0.78491477, 0.65140349], 1.5]
+        # self.action_default = [[-1.1043609989988998, 0.4189421169507377, 0.6136590527537424, 0.17937150405933405, 0.7308690288307631, -0.34266949387331913], [-1.1043609989988998, 0.4189421169507377, -0.6136590527537424, -0.17937150405933405, -0.7308690288307631, 0.34266949387331913], 1.5]
         self.action = []
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
@@ -64,6 +65,7 @@ class Controller:
         # trunk state 
         vel_trunk = body_trunk.world_com_velocity()
         state.append(np.dot(R_trunk_inv,vel_trunk))
+        return np.array(state).flatten().tolist()
         # other bodies state
         bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
         for name in bodies:
@@ -104,7 +106,7 @@ class Controller:
         action_before = self.action[-2]
         action_cur = self.action[-1]
         phase = self.period_to_phase(self.time, action_cur[2])
-        alpha = phase/math.pi
+        alpha = 2.0*phase/math.pi
         if alpha > 1.0:
             alpha = 1.0
         for i in range(2):

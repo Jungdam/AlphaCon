@@ -24,17 +24,19 @@ def sub(a, b):
 		(np.array(a[0])-np.array(b[0])).tolist(),
 		(np.array(a[1])-np.array(b[1])).tolist(),
 		a[2]-b[2]]
-def random(sigma, action=None):
+def random(sigma, default_action=None):
 	d = len(sigma)
 	a = [0.0]*d
 	for i in xrange(d):
 		# a[i] = np.random.uniform(-sigma[i], sigma[i])
 		a[i] = np.random.normal(0.0, sigma[i])
 	r = [a[0:dim_l],a[dim_l:(dim_l+dim_r)],a[dim_l+dim_r]]
-	if action is None:
+	if default_action is None:
 		return r
 	else:
-		return add(r, action)
+		return add(r, default_action)
+def mirror(a,left_given=True):
+	return [a[0],a[1],-a[2],-a[3],-a[4],-a[5]]
 def zero():
 	return [[0.0]*dim_l,[0.0]*dim_r,0.0]
 def length():

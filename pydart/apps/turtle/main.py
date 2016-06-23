@@ -7,11 +7,7 @@ import pydart
 import math
 import numpy as np
 import controller
-import cma
 import aerodynamics
-import myworld
-import multiprocessing
-from multiprocessing import Process, Queue
 import eye
 import nn
 import deepRL
@@ -21,6 +17,10 @@ import profile
 import pickle
 import json
 import action as ac
+import optimizer
+import mmMath
+import myworld
+import gl_render
 
 np.set_printoptions(precision=4)
 
@@ -40,6 +40,7 @@ state['ImpulseDuration'] = 0
 state['DrawAeroForce'] = True
 state['DrawGround'] = True
 state['DrawJoint'] = True
+state['DrawGrid'] = True
 state['EnableAerodynamics'] = True
 state['DrawScene'] = True
 state['DeepControl'] = False
@@ -51,6 +52,8 @@ state['Test'] = False
 
 aero_force = []
 profile = profile.Profile()
+
+grid = []
 
 def apply_aerodynamics(skel):
     aero_force = []
@@ -93,41 +96,6 @@ def apply_aerodynamics(skel):
             aero_force.append([p,f])
 
     return aero_force
-
-def obj_func(q, idx, world, param):
-    
-    skel = world.get_skeleton()
-
-    # convert 
-    p_default = skel.controller.get_param_default()
-
-    p_l = param[0:6]
-    p_r = np.array([p_l[0],p_l[1],-p_l[2],-p_l[3],-p_l[4],-p_l[5]])
-    p_t = 0.0 #param[-1]
-    p = [(np.array(p_default[0])+p_l).tolist(),(np.array(p_default[1])+p_r).tolist(),(p_default[2]+p_t)]
-
-    world.reset()
-    skel.controller.set_param_all(p)
-    skel.controller.reset_tau_sum()
-
-    t0 = skel.body('trunk').world_com()
-
-    time_to_simulate = int(5 * p[2])
-    num_frame = int(time_to_simulate / world.get_time_step())
-    for i in range(num_frame):
-        world.step()
-
-    t1 = skel.body('trunk').world_com()
-
-    diff = t1-t0
-    v0 = 10.0 * (diff[0]*diff[0] + diff[1]*diff[1])
-    v1 = 40 * math.exp(-0.01*diff[2]*diff[2])
-    v2 = 10 * np.dot(p_l,p_l)
-    v3 = 0.00002 * skel.controller.get_tau_sum() / time_to_simulate
-    print '\t', p, v0, v1, v2, v3
-    val = v0 + v1 + v2 + v3
-
-    q.put([idx, val])
 
 def step_callback(world):
     skel = world.skels[0]
@@ -209,7 +177,6 @@ def step_callback(world):
     #     world.skel.body('h_spine').add_ext_force(f)
     # else:
     #     state['Force'] = np.zeros(3)
-
 def render_callback():
     global aero_force
 
@@ -230,70 +197,21 @@ def render_callback():
             glEnd()
 
     if state['DrawGround']:
-        lx = 20.0
-        lz = 20.0
-        nx = 10
-        nz = 10
-        dx = 2.0*lx/nx
-        dz = 2.0*lz/nz
-
-        glColor3d(0.0, 0.5, 0.0)
-        glLineWidth(2.0)
-        for i in range(nx+1):
-            glBegin(GL_LINES)
-            glVertex3d(-lx+i*dx,0,-lz)
-            glVertex3d(-lx+i*dx,0,lz)
-            glEnd()
-        for i in range(nz+1):
-            glBegin(GL_LINES)
-            glVertex3d(-lx,0,-lz+i*dz)
-            glVertex3d(lx,0,-lz+i*dz)
-            glEnd()
-
-        glBegin(GL_LINES)
-        glColor3d(1,0,0)
-        glVertex3d(0,0,0)
-        glVertex3d(1,0,0)
-        glColor3d(0,1,0)
-        glVertex3d(0,0,0)
-        glVertex3d(0,1,0)
-        glColor3d(0,0,1)
-        glVertex3d(0,0,0)
-        glVertex3d(0,0,1)
-        glEnd()        
+        gl_render.render_ground()
 
     if state['DrawJoint']:
-        glLineWidth(2.0)
         for i in range(skel.num_joints()):
             joint = skel.joint(i)
             # print joint.name
             T = joint.transformation()
-            R = T[0:3, 0:3]
-            t = T[0:3, 3]
-
-            glPushMatrix()
-            glTranslated(t[0],t[1],t[2])
-
-            glColor3d(1.0, 1.0, 0.0)
-            glutSolidSphere(0.05, 10, 10)
-            glBegin(GL_LINES)
-            
-            glColor3d(1,0,0)
-            glVertex3d(0,0,0)
-            glVertex3d(R[0,0],R[1,0],R[2,0])
-            
-            glColor3d(0,1,0)
-            glVertex3d(0,0,0)
-            glVertex3d(R[0,1],R[1,1],R[2,1])
-
-            glColor3d(0,0,1)
-            glVertex3d(0,0,0)
-            glVertex3d(R[0,2],R[1,2],R[2,2])
-            glEnd()
-            glPopMatrix()
+            gl_render.render_transform(T,scale=0.5)
 
     if state['DrawScene']:
         scene.render()
+
+    if state['DrawGrid']:
+        for g in grid:
+            gl_render.render_transform(g,0.25,0.25)
 
 def keyboard_callback(world, key):
     """ Programmable interactions """
@@ -344,13 +262,13 @@ def keyboard_callback(world, key):
         state['DeepTrainning'] = False
         state['DeepControl'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
-        world.reset()
-        skel.controller.reset()
+        custom_world.reset()
         scene.perturbate()
         pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
     elif key == 'w':
-        gen_warmup_data('warmup_db.txt', 0.15, 1000, 10)
+        print '----- warmup data generation -----'
+        gen_warmup_data('warmup_db.txt', 0.15, 2000, 5)
     elif key == '9':
         print world.states()
     elif key == '0':
@@ -365,62 +283,74 @@ def keyboard_callback(world, key):
         im = eye.get_image()
         print im
     elif key == 'o':
-        print('-----------Start Optimization-----------')
-        num_cores = multiprocessing.cpu_count()
-        num_pop = max(8, 1*num_cores)
-        num_gen = 50
+        global grid
+        custom_world.reset()
+        num_wingbeat = 2
         
-        myWorlds = []
-        for i in range(num_pop):
-            myWorlds.append(myworld.Myworld(dt, skel_file, step_callback))
+        skel = custom_world.skel
+        controller = custom_world.skel.controller
 
-        opts = cma.CMAOptions()
-        opts.set('pop', num_pop)
-        es = cma.CMAEvolutionStrategy(6*[0], 0.2, opts)
-        for i in range(num_gen):
-            X = es.ask()
-            fit = num_pop*[0.0]
-            q = Queue()
-            ps = []
-            for j in range(num_pop):
-                p = Process(target=obj_func, args=(q, j, myWorlds[j],X[j]))
-                p.start()
-                ps.append(p)
-            for j in range(num_pop):
-                ps[j].join()
-            for j in range(num_pop):
-                val = q.get()
-                fit[val[0]] = val[1]
-                print '[', i, val[0], ']', val[1]
-            es.tell(X,fit)
-        cma.pprint(es.result())
+        T_0 = skel.body('trunk').T
+        T_1 = []
+        T_2 = []
 
-        # es.optimize(obj_func, verb_disp=1)
-        # cma.pprint(es.result())
-        print('-----------End Optimization-------------')
+        while True:
+            custom_world.step()
+            if controller.is_new_wingbeat():
+                if controller.get_num_wingbeat() == 1:
+                    T_1 = skel.body('trunk').T
+                elif controller.get_num_wingbeat() == 2:
+                    T_2 = skel.body('trunk').T
+                if controller.get_num_wingbeat() >= num_wingbeat:
+                    break
+
+        grid = gen_grid([T_0,T_1,T_2],[0.15*math.pi,0.15*math.pi,0.75])
+
+        # optimizer.run(optimizer.obj_func_straight, optimizer.print_func_straight)
     else:
         return False
     return True
 
+def gen_grid(transforms,size):
+    grid = []
+
+    R_0,p_0 = mmMath.T2Rp(transforms[0])
+    R_1,p_1 = mmMath.T2Rp(transforms[1])
+    R_2,p_2 = mmMath.T2Rp(transforms[2])
+
+    angle_spread_lr = size[0]
+    angle_spread_tb = size[1]
+    radius = size[2]*mmMath.length(p_2-p_1)
+
+    v = p_2-p_0
+    unit_v = v/mmMath.length(v)
+
+    for i in np.linspace(-angle_spread_lr,angle_spread_lr,5):
+        for j in np.linspace(-angle_spread_tb,angle_spread_tb,5):
+            for r in np.linspace(-radius,radius,5):
+                R = mmMath.getSO3ByEuler([i,j,0.0])
+                p = p_0 + np.dot(R,v+r*unit_v)
+                grid.append(mmMath.Rp2T(R,p))
+    return grid
 def gen_warmup_data(file_name, sigma=0.15, num_episode=10000, num_wingbeat=10):
     data = []
+    action_default = skel.controller.get_action_default()
+    sigma_n = [sigma]*ac.length()
     for ep in xrange(num_episode):
-        world.reset()
-        skel.controller.reset()
+        custom_world.reset()
         for i in xrange(num_wingbeat+1):
             q_skel_init = skel.q
-            action_default = skel.controller.get_action_default()
-            action_random = ac.random([sigma]*ac.length())
+            action_random = ac.random(sigma_n)
             action = ac.add(action_default, action_random)
             skel.controller.add_action(action)
             while True:
-                world.step()
+                custom_world.step()
                 if skel.controller.is_new_wingbeat():
                     break
             q_skel_term = skel.q
             if i != 0:
                 data.append([q_skel_init, q_skel_term, action])
-        if (ep+1)%100 == 0:
+        if (ep+1)%1 == 0:
             print (ep+1), 'episode generated'
     f = open(file_name, 'w')
     pickle.dump(data, f)
@@ -429,8 +359,11 @@ def gen_warmup_data(file_name, sigma=0.15, num_episode=10000, num_wingbeat=10):
 #
 # Initialize world and controller
 #
-world = pydart.create_world(dt, skel_file)
-skel = world.skels[0]
+
+custom_world = myworld.Myworld(dt, skel_file)
+
+world = custom_world.get_world()
+skel = custom_world.get_skeleton()
 # world.add_skeleton(wall_file)
 
 def gen_scene(stride=3.0, size=1):
@@ -456,7 +389,8 @@ mynn.initialize([3,\
     skel.controller.get_action_size()])
 # rl = deepRL.DeepRL(world, skel, scene, mynn, "warming_up_db.txt")
 # rl = deepRL.DeepRLSimple(world, skel, scene, mynn, "warming_up_db.txt")
-rl = deepRL.DeepRLSimple(world, skel, scene, mynn, "0.15_10000_warmup_db.txt")
+# rl = deepRL.DeepRLSimple(world, skel, scene, mynn, "0.15_50000_warmup_db.txt")
+rl = deepRL.DeepRLSimple(custom_world, scene, mynn)
 
 # # Load warmup data for RL
 # warmup_data_cnt = 0
@@ -492,7 +426,7 @@ else:
     # tb = pydart.glutgui.Trackball(phi=-1.4, theta=-6.2, zoom=1.0,
     #                             rot=[-0.05, 0.07, -0.01, 1.00],
     #                             trans=[0.02, 0.09, -3.69])
-    pydart.glutgui.run(title='turtle', simulation=world, trans=[0, 0, -30],
+    pydart.glutgui.glutgui.run(title='turtle', simulation=world, trans=[0, 0, -30],
                        step_callback=step_callback,
                        keyboard_callback=keyboard_callback,
                        render_callback=render_callback)

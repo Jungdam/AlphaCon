@@ -4,10 +4,10 @@ import warnings
 import datetime
 
 def weight_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.05)
+  initial = tf.truncated_normal(shape, stddev=0.10)
   return tf.Variable(initial)
 def bias_variable(shape):
-  initial = tf.truncated_normal(shape, stddev=0.05)
+  initial = tf.truncated_normal(shape, stddev=0.10)
   return tf.Variable(initial)
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -227,9 +227,10 @@ class NNBase:
 class MyNNSimple(NNBase):
 	def __init__(self, name):
 		NNBase.__init__(self, name)
-		self.dropout_keep_prob = 0.5
+		self.dropout_keep_prob = 1.0
 		self.train_a = None
 		self.train_q = None
+		self.train_sum = None
 		self.eval_q = None
 		self.eval_a = None
 		self.placeholder_sensor = None
@@ -239,6 +240,7 @@ class MyNNSimple(NNBase):
 		self.placeholder_dropout_keep_prob = None
 		self.loss_q = None
 		self.loss_a = None
+		self.loss_sum = None
 	def initialize(self, data):
 		tf.reset_default_graph()
 		with self.graph.as_default():
@@ -254,29 +256,32 @@ class MyNNSimple(NNBase):
 
 			# Combined layer for the sensor and the skel
 			h_comb1 = tf.concat(1, [state_sensor, state_skel])
-			W_fc1 = weight_variable([s+d, 512])
-			b_fc1 = bias_variable([512])
+			W_fc1 = weight_variable([s+d, 32])
+			b_fc1 = bias_variable([32])
 			h_fc1 = tf.nn.relu(tf.matmul(h_comb1, W_fc1) + b_fc1)
 			# Combined layer for the sensor and the skel
-			W_fc2 = weight_variable([512, 256])
-			b_fc2 = bias_variable([256])
+			W_fc2 = weight_variable([32, 64])
+			b_fc2 = bias_variable([64])
 			h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 			h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
 			#
-			W_fc3_qvalue = weight_variable([256, 1])
+			W_fc3_qvalue = weight_variable([64, 1])
 			b_fc3_qvalue = bias_variable([1])
 			h_fc3_qvalue = tf.matmul(h_fc2_drop, W_fc3_qvalue) + b_fc3_qvalue
-			W_fc3_action = weight_variable([256, a])
+			W_fc3_action = weight_variable([64, a])
 			b_fc3_action = bias_variable([a])
 			h_fc3_action = tf.matmul(h_fc2_drop, W_fc3_action) + b_fc3_action
 			# Optimizer
-			loss_qvalue = tf.reduce_mean(100.0*tf.square(target_qvalue - h_fc3_qvalue))
-			loss_action = tf.reduce_mean(100.0*tf.square(target_action - h_fc3_action))
+			loss_qvalue = tf.mul(1.0,tf.reduce_mean(tf.square(target_qvalue - h_fc3_qvalue)))
+			loss_action = tf.mul(100.0,tf.reduce_mean(tf.square(target_action - h_fc3_action)))
+			loss_sum = tf.add(loss_qvalue, loss_action)
 			# Trainning
-			self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
-			self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
-			# self.train_q = tf.train.GradientDescentOptimizer(0.001).minimize(loss_qvalue)
-			# self.train_a = tf.train.GradientDescentOptimizer(0.001).minimize(loss_action)
+			# self.train_q = tf.train.AdamOptimizer(1e-4).minimize(loss_qvalue)
+			# self.train_a = tf.train.AdamOptimizer(1e-4).minimize(loss_action)
+			# self.train_sum = tf.train.AdamOptimizer(1e-4).minimize(loss_sum)
+			self.train_q = tf.train.GradientDescentOptimizer(1e-5).minimize(loss_qvalue)
+			self.train_a = tf.train.GradientDescentOptimizer(1e-5).minimize(loss_action)
+			self.train_sum = tf.train.GradientDescentOptimizer(1e-5).minimize(loss_sum)
 			# Evaultion
 			self.eval_q = h_fc3_qvalue
 			self.eval_a = h_fc3_action
@@ -289,20 +294,27 @@ class MyNNSimple(NNBase):
 			# Loss
 			self.loss_q = loss_qvalue
 			self.loss_a = loss_action
+			self.loss_sum = loss_sum
 			# Initialize all variables
 			self.sess = tf.Session(graph=self.graph)
 			self.sess.run(tf.initialize_all_variables())
 			self.saver = tf.train.Saver()
 			self.initialized = True
 	def train(self, data):
-		data_state_sensor = data[0]
-		data_state_skel = data[1]
-		target_qvalue = data[2]
-		target_action = data[3]
-		self.train_qvalue([\
-			data_state_sensor,data_state_skel,target_qvalue])
-		self.train_action([\
-			data_state_sensor,data_state_skel,target_action])
+		# data_state_sensor = data[0]
+		# data_state_skel = data[1]
+		# target_qvalue = data[2]
+		# target_action = data[3]
+		# self.train_qvalue([\
+		# 	data_state_sensor,data_state_skel,target_qvalue])
+		# self.train_action([\
+		# 	data_state_sensor,data_state_skel,target_action])
+		self.sess.run(self.train_sum, feed_dict={
+			self.placeholder_sensor: data[0],
+			self.placeholder_skel: data[1],
+			self.placeholder_target_qvalue: data[2],
+			self.placeholder_target_action: data[3],
+			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})
 	def eval(self, data):
 		q = self.eval_qvalue(data)
 		a = self.eval_action(data)

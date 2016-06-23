@@ -26,12 +26,12 @@ class DeepRLBase:
 		self.replay_buffer = []
 		self.buffer_size = 0
 		self.buffer_size_accum = 0
-		self.warmup_size = 100000
-		self.max_buffer_size = 110000
+		self.warmup_size = 45000
+		self.max_buffer_size = 50000
 		self.max_data_gen = 500000
 		self.sample_size = 100
 		self.discount_factor = 0.99
-		self.init_exprolation_prob = 0.15
+		self.init_exprolation_prob = 0.1
 		self.warmup_file = warmup_file
 		if self.warmup_file is not None:
 			print self.warmup_file, "is loading..."
@@ -98,7 +98,7 @@ class DeepRLBase:
 			return self.init_exprolation_prob
 		else:
 			sigma_inv = 1.0
-			return 0.25*self.init_exprolation_prob * \
+			return 1.0*self.init_exprolation_prob * \
 				math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_data_gen))
 	def is_warming_up(self):
 		return self.buffer_size_accum < self.warmup_size
@@ -123,14 +123,15 @@ class DeepRLBase:
 			is_warming_up_end = self.is_warming_up()
 			if is_warming_up_start != is_warming_up_end:
 				self.save_replay_buffer('__warming_up_db.txt')
-				# cnt = 0
-				# while True:
-				# 	data = self.sample(self.sample_idx())
-				# 	self.update_model(data)
-				# 	self.print_loss()
-				# 	cnt += self.sample_size
-				# 	if cnt>=1*self.buffer_size:
-				# 		break
+				if self.warmup_file is None:
+					cnt = 0
+					while True:
+						data = self.sample(self.sample_idx())
+						self.update_model(data)
+						self.print_loss()
+						cnt += self.sample_size
+						if cnt>=2*self.buffer_size:
+							break
 			# Train network
 			if not self.is_warming_up():
 				data = self.sample(self.sample_idx())
@@ -352,10 +353,8 @@ class DeepRLBase:
 # 		f.close()
 
 class DeepRLSimple(DeepRLBase):
-	def __init__(self, world, skel, scene, nn, warmup_file=None):
+	def __init__(self, world, scene, nn, warmup_file=None):
 		self.world = world
-		self.skel = skel
-		self.controller = skel.controller
 		self.scene = scene
 		self.nn = nn
 		DeepRLBase.__init__(self, warmup_file)
@@ -366,74 +365,69 @@ class DeepRLSimple(DeepRLBase):
 				self.update_model(data)
 				self.print_loss()
 				cnt += self.sample_size
-				if cnt>=5*self.buffer_size:
+				if cnt>=0.1*self.buffer_size:
 					break;
 	def convert_warmup_file_to_buffer_data(self, file_name):
 		f = open(file_name, 'r')
 		data = pickle.load(f)
 		size = len(data)
-		action_default = self.controller.get_action_default()
+		action_default = self.world.skel.controller.get_action_default()
 		tuples = []
 		for d in data:
 			q_skel_init = d[0]
 			q_skel_term = d[1]
 
 			self.world.reset()
-			self.skel.controller.reset()
 			self.scene.perturbate()
 			self.scene.update()
 
-			self.skel.set_positions(q_skel_init)
+			self.world.skel.set_positions(q_skel_init)
 			self.world.step(False)
 			self.scene.update()
 			state_sensor_init = self.sensor()
-			state_skel_init = self.controller.get_state()
+			state_skel_init = self.world.skel.controller.get_state()
 			reward_init = self.reward()
 
 			if reward_init > 0.0:
 				continue
 
 			self.world.reset()
-			self.skel.controller.reset()
+			self.world.skel.controller.reset()
 
-			self.skel.set_positions(q_skel_term)
+			self.world.skel.set_positions(q_skel_term)
 			self.world.step(False)
 			self.scene.update()
 			state_sensor_term = self.sensor()
-			state_skel_term = self.controller.get_state()
+			state_skel_term = self.world.skel.controller.get_state()
 			reward_term = self.reward()
 
 			reward = reward_term - reward_init
-
-			# print q_skel_init
-			# print q_skel_term
-			# print self.skel.body('trunk').world_com()
-			print reward
 
 			action = d[2]
 			action_extra = ac.sub(action,action_default)
 			action_extra_flat = flatten(action_extra)
 			tuples.append([state_sensor_init, state_skel_init, action_extra_flat, [reward], state_sensor_term, state_skel_term])
+
 		self.world.reset()
-		self.skel.controller.reset()
 		return tuples
 	def init_step(self):
 		# initialize world and controller
 		self.world.reset()
-		self.controller.reset()
 		# set new environment
 		self.scene.perturbate()
 		self.scene.update()
 	def sensor(self):
-		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
+		R,p = mmMath.T2Rp(self.world.skel.body('trunk').T)
 		return np.dot(inv(R),self.scene.get_pos()-p)
 	def step(self, sigma, full_random=False):
 		# 
 		state_sensor_init = self.sensor()
-		state_skel_init = self.controller.get_state()
-		reward_l_init,reward_a_init = self.reward()
+		state_skel_init = self.world.skel.controller.get_state()
+		reward_init = self.reward()
+		if reward_init > 0.0:
+			return None
 		# set new action parameter
-		action_default = self.controller.get_action_default()
+		action_default = self.world.skel.controller.get_action_default()
 		action_random = ac.random([sigma]*ac.length())
 		action_extra = []
 		if full_random:
@@ -443,17 +437,17 @@ class DeepRLSimple(DeepRLBase):
 			action_extra = ac.add(action_policy, action_random)
 		action = ac.add(action_default, action_extra)
 		# print action
-		self.controller.add_action(action)
+		self.world.skel.controller.add_action(action)
 		action_extra_flat = flatten(action_extra)
 		while True:
 			self.world.step()
 			self.scene.update()
-			if self.controller.is_new_wingbeat():
+			if self.world.skel.controller.is_new_wingbeat():
 				break
 		state_sensor_term = self.sensor()
-		state_skel_term = self.controller.get_state()
-		reward_l_term, reward_a_term = self.reward()
-		reward = (reward_l_term - reward_l_init) + 10*(reward_a_term - reward_a_init)
+		state_skel_term = self.world.skel.controller.get_state()
+		reward_term = self.reward()
+		reward = reward_term - reward_init
 		# print reward_l_init, reward_l_term
 		# print reward_a_init, reward_a_term
 		# print reward, '\n'
@@ -523,25 +517,33 @@ class DeepRLSimple(DeepRLBase):
 		data_reward = data[3]
 		data_state_sensor_prime = data[4]
 		data_state_skel_prime = data[5]
+		
 		target_qvalue, target_action = \
 			self.compute_target_value([
 				data_state_sensor_prime,
 				data_state_skel_prime,
 				data_action,
 				data_reward])
+
 		self.nn.train_qvalue([data_state_sensor,data_state_skel,target_qvalue])
+
+		# self.nn.train([data_state_sensor,data_state_skel,target_qvalue,target_action])
+		# return
+
 		qvalue = self.nn.eval_qvalue([data_state_sensor, data_state_skel])
-		dse = []
-		dss = []
-		ta = []
+		train_state_sensor = []
+		train_state_skel = []
+		train_target_action = []
+		train_target_qvalue = []
 		num_data = len(data_state_sensor)
 		for i in xrange(num_data):
 			if False or target_qvalue[i][0] > qvalue[i][0]:
-				dse.append(data_state_sensor[i])
-				dss.append(data_state_skel[i])
-				ta.append(target_action[i])
-		if len(ta)>0:
-			self.nn.train_action([dse,dss,ta])
+				train_state_sensor.append(data_state_sensor[i])
+				train_state_skel.append(data_state_skel[i])
+				train_target_action.append(target_action[i])
+				train_target_qvalue.append(target_qvalue[i])
+		if len(train_target_qvalue)>0:
+			self.nn.train_action([train_state_sensor,train_state_skel,train_target_action])
 	def get_action(self, state_sensor, state_skel, action_default=None):
 		s_sensor = np.array([state_sensor])
 		s_skel = np.array([state_skel])

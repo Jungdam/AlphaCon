@@ -76,7 +76,7 @@ class Scene(SceneBase):
 		self.radius = []
 		self.hit = []
 		self.size = 0
-		self.hit_radius = 0.5
+		self.hit_radius = 0.3
 		if pos != None and radius != None:
 			self.generate([pos, radius])
 	def get_pos(self):
