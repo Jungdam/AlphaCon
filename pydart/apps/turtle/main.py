@@ -27,7 +27,7 @@ np.set_printoptions(precision=3)
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
-warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/database/0.15_10000_8_warmup_db.txt'
+warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.15_10000_5.warmup'
 
 print('Example: turtle')
 
@@ -314,7 +314,7 @@ def keyboard_callback(world, key):
         pydart.glutgui.play(True)
     elif key == 'w':
         print '----- warmup data generation -----'
-        gen_warmup_data('warmup_db.txt', 0.15, 10000, 8)
+        gen_warmup_data(0.15, 10000, 8)
     elif key == '9':
         print world.states()
     elif key == '0':
@@ -399,7 +399,7 @@ def gen_warmup_data(file_name, sigma=0.15, num_episode=10000, num_wingbeat=10):
                 data.append([q_skel_init, q_skel_term, action])
         if (ep+1)%1 == 0:
             print (ep+1), 'episode generated'
-    f = open(file_name, 'w')
+    f = open(sigma+'_'+num_episode+'_'+num_wingbeat+'.warmup', 'w')
     pickle.dump(data, f)
     f.close()
 
