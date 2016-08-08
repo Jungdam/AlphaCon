@@ -43,21 +43,20 @@ def apply_aerodynamics(skel):
             body.add_ext_force_at(f,p_local[0:3])
 
 class Myworld:
-	def __init__(self, dt, skel_file):
-		self.world = pydart.create_world(dt, skel_file)
-		self.skel = self.world.skels[0]
-		self.skel.controller = controller.Controller(self.world, self.skel)
-	def reset(self):
-		self.world.reset()
-		self.skel.controller.reset()
-	def step(self, apply_controller=True):
-		apply_aerodynamics(self.skel)
-		self.world.step(apply_controller)
-	def get_world(self):
-		return self.world
-	def get_skeleton(self):
-		return self.skel
-	def get_scene(self):
-		return self.scene
-	def get_time_step(self):
-		return self.world.dt
+    def __init__(self, dt, skel_file):
+        self.world = pydart.create_world(dt, skel_file)
+        self.skel = self.world.skels[0]
+        self.skel.controller = controller.Controller(self.world, self.skel)
+    def reset(self):
+        self.world.reset()
+        self.skel.controller.reset()
+    def step(self, apply_controller=True, apply_aero=True):
+        self.world.step(apply_controller,apply_aero)
+    def get_world(self):
+        return self.world
+    def get_skeleton(self):
+        return self.skel
+    def get_scene(self):
+        return self.scene
+    def get_time_step(self):
+        return self.world.dt

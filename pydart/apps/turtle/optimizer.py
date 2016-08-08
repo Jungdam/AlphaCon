@@ -61,7 +61,7 @@ def obj_func_straight(q, idx, world, action):
     skel.controller.reset()
     skel.controller.set_action_all(a)
 
-    num_wingbeat = 5
+    num_wingbeat = 8
 
     t0 = skel.body('trunk').world_com()
 
@@ -74,15 +74,15 @@ def obj_func_straight(q, idx, world, action):
 
     diff = t1-t0
     v0 = 10.0 * (diff[0]*diff[0] + diff[1]*diff[1])
-    v1 = 40 * math.exp(-0.01*diff[2]*diff[2])
-    v2 = 10 * np.dot(np.array(a_l),np.array(a_l))
-    v3 = 0.00002 * skel.controller.get_tau_sum() / (num_wingbeat*a[2])
+    v1 = 30 * math.exp(-0.01*diff[2]*diff[2])
+    v2 = 100 * np.dot(np.array(a_l),np.array(a_l))
+    v3 = 0.0002 * skel.controller.get_tau_sum() / (num_wingbeat*a[2])
     val = v0 + v1 + v2 + v3
-    print '\t', val, a, v0, v1, v2, v3
+    print '\t', val, v0, v1, v2, v3
     
     q.put([idx, val])
 
-def print_func_straight(result,controller):
+def result_func_straight(result,controller):
 	a_default = controller.get_action_default()
 	a_l = result[0].tolist()
 	a_r = ac.mirror(a_l)
@@ -91,7 +91,7 @@ def print_func_straight(result,controller):
 	a_extra = [a_l,a_r,a_t]
 	return ac.add(a_default, a_extra)
 
-def run(obj_func, print_func, options=None):
+def run(obj_func, result_func, options=None):
 	print('-----------Start Optimization-----------')
 	num_cores = multiprocessing.cpu_count()
 	num_pop = max(8, 1*num_cores)
@@ -125,4 +125,4 @@ def run(obj_func, print_func, options=None):
 	# es.optimize(obj_func, verb_disp=1)
 	# cma.pprint(es.result())
 	print('-----------End Optimization-------------')
-	return print_func(es.result(),myWorlds[0].skel.controller)
+	return result_func(es.result(),myWorlds[0].skel.controller)

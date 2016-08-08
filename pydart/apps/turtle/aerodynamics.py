@@ -48,6 +48,7 @@ def compute(v, n, a):
     
     l = l/np.linalg.norm(l)
     liftDir = np.cross(l,dragDir)
+    liftDir = liftDir/np.linalg.norm(liftDir)
 
     v_n = np.dot(dragDir,normalDir) * v
     v_t = v - v_n

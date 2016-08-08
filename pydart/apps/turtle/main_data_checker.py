@@ -43,7 +43,7 @@ def load_data(file_name):
 		q_skel_term = d[1]
 		action = d[2]
 
-		print action
+		# print action
 
 		#
 		world.reset()
@@ -156,7 +156,7 @@ def keyboard_callback(key):
         return False
     return True
 
-data_global,data_local = load_data('warmup_db.txt')
+data_global,data_local = load_data('./data/database/0.15_10000_8_warmup_db.txt')
 
 pydart.glutgui.glutgui_base.run(
 	title='Data Checker', 

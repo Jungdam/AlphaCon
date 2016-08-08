@@ -3,6 +3,7 @@ from numpy.linalg import inv
 import math
 import mmMath
 import eye
+import action as ac
 
 class Controller:
     """ Add damping force to the skeleton """
@@ -20,9 +21,9 @@ class Controller:
         # self.action_base = [[-1.5, 0.5, 0.5, 0.0, 1.0, -0.5], [-1.5, 0.5, -0.5, 0.0, -1.0, 0.5], 1.5]
         # self.action_default = [[0.24432079, 0.1118376, 0.03513041, 0.28105493, -0.21508523, -0.15140349], \
         #     [0.24432079, 0.1118376, -0.03513041, -0.28105493, 0.21508523, 0.15140349], 1.5]
-        self.action_default = [[-1.25567921, 0.6118376, 0.53513041, 0.28105493, 0.78491477, -0.65140349],\
-            [-1.25567921, 0.6118376, -0.53513041, -0.28105493, -0.78491477, 0.65140349], 1.5]
-        # self.action_default = [[-1.1043609989988998, 0.4189421169507377, 0.6136590527537424, 0.17937150405933405, 0.7308690288307631, -0.34266949387331913], [-1.1043609989988998, 0.4189421169507377, -0.6136590527537424, -0.17937150405933405, -0.7308690288307631, 0.34266949387331913], 1.5]
+        # self.action_default = [[-1.25567921, 0.6118376, 0.53513041, 0.28105493, 0.78491477, -0.65140349],\
+        #     [-1.25567921, 0.6118376, -0.53513041, -0.28105493, -0.78491477, 0.65140349], 1.5]
+        self.action_default = [[-1.4597904546361948, 0.43397878147503394, 0.5187277879484047, 0.6483358027166627, 0.38234268646660213, -0.5799882847313336], [-1.4597904546361948, 0.43397878147503394, -0.5187277879484047, -0.6483358027166627, -0.38234268646660213, 0.5799882847313336], 1.5]
         self.action = []
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
@@ -40,8 +41,11 @@ class Controller:
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
         self.time = 0.0
-    def add_action(self, action):
-        self.action.append(action)
+    def add_action(self, action, is_delta_moode=False):
+        if is_delta_moode:
+            self.action.append(ac.add(self.action_default,action))
+        else:
+            self.action.append(action)
     def set_action(self, action):
         self.action = action
     def set_action_all(self, action):
@@ -65,9 +69,10 @@ class Controller:
         # trunk state 
         vel_trunk = body_trunk.world_com_velocity()
         state.append(np.dot(R_trunk_inv,vel_trunk))
-        return np.array(state).flatten().tolist()
         # other bodies state
-        bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
+        bodies = []
+        # bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
+        # bodies = ['left_arm', 'right_arm']
         for name in bodies:
             body = self.skel.body(name)
             l = body.world_com() - p_trunk

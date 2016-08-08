@@ -52,3 +52,14 @@ def render_ground(size=[20.0,20.0],dsize=[1.0,1.0],color=[0.0,0.0,0.0],line_widt
         glEnd()
 
     render_transform(mmMath.I_SE3())
+def render_path(data,color=[0.0,0.0,0.0],scale=1.0,line_width=1.0,point_size=1.0):
+    glColor3d(color[0],color[1],color[2])
+    glLineWidth(line_width)
+    glBegin(GL_LINE_STRIP)
+    for d in data:
+        R,p = mmMath.T2Rp(d)
+        glVertex3d(p[0],p[1],p[2])
+    glEnd()
+
+    for d in data:
+        render_transform(d,scale,line_width,point_size)

@@ -62,7 +62,6 @@ void setSkeletonPositions(int wid, int skid, double* inpose, int ndofs);
 void setSkeletonVelocities(int wid, int skid, double* inpose, int ndofs);
 void setSkeletonForces(int wid, int skid, double* intorque, int ndofs);
 
-
 // Skeleton Limit Functions
 void getSkeletonPositionLowerLimit(int wid, int skid, double* outpose, int ndofs);
 void getSkeletonPositionUpperLimit(int wid, int skid, double* outpose, int ndofs);
@@ -100,6 +99,11 @@ void getMarkerPosition(int wid, int skid, int bid, int mid, double outv3[3]);
 
 // C3D Functions
 int readC3D(const char* const path, double* outv, int len);
+
+// Auxiliary Functions
+void addAerodynamicForce(int wid, int skid, int bid);
+void addAerodynamicForce(int wid, int skid);
+void addAerodynamicForce(int wid);
 
 #endif // #ifndef PYDART_PYDART_API_H
 

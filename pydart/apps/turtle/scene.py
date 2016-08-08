@@ -3,6 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
+import math
 import mmMath
 
 # class Object:
@@ -67,7 +68,7 @@ class Scene1(SceneBase):
 		glutSolidSphere(r, 20, 20)
 		glPopMatrix()
 
-class Scene(SceneBase):
+class Scene2(SceneBase):
 	def __init__(self, skel, pos=None, radius=None):
 		self.skel = skel
 		self.pos_init = []
@@ -88,12 +89,12 @@ class Scene(SceneBase):
 				cnt += 1
 		return float(cnt)
 	def update(self):
-		transform = self.skel.body('trunk').T
+		pos = self.skel.body('trunk').C
 		radius = self.hit_radius
 		for i in range(self.size):
 			p = self.pos[i]
 			r = self.radius[i]+radius
-			l = np.linalg.norm(p-transform[0:3,3])
+			l = np.linalg.norm(p-pos)
 			if l < r:
 				self.hit[i] = True
 	def perturbate(self, data=[[3.0, 3.0, 8.0],0.01]):
@@ -103,7 +104,7 @@ class Scene(SceneBase):
 			z = np.random.uniform(2.0, sigma_pos[2])
 			frac = z/sigma_pos[2]
 			x = frac*np.random.uniform(-sigma_pos[0], sigma_pos[0])
-			y = frac*np.random.uniform(-sigma_pos[0], sigma_pos[0])
+			y = frac*np.random.uniform(-sigma_pos[1], sigma_pos[1])
 			noise_pos = np.array([x,y,z])
 			noise_radius = np.random.normal(0.0, sigma_radius)
 			self.pos[i] = self.pos_init[i] + noise_pos
@@ -131,3 +132,62 @@ class Scene(SceneBase):
 		self.size = len(pos)
 		self.hit = [False] * self.size
 
+class Scene(SceneBase):
+	def __init__(self, skel, pos=None, radius=None):
+		self.skel = skel
+		self.pos_init = []
+		self.radius_init = []
+		self.pos = []
+		self.radius = []
+		self.hit = []
+		self.size = 0
+		self.hit_radius = 0.3
+		if pos != None and radius != None:
+			self.generate([pos, radius])
+	def get_pos(self):
+		return self.pos[0]
+	def score(self):
+		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
+		diff = self.pos[0]-p
+		l = np.linalg.norm(diff)
+		axis = R[:,2]
+		return math.exp(-0.5*l*l)
+		# + math.exp(-5.0*((np.dot(axis,diff/l)-1.0)**2))
+		#(0.5*(np.dot(axis,diff/l)+1.0))**2
+	def update(self):
+		return
+	def perturbate(self, data=[[4.0, 4.0, 10.0],0.01]):
+		sigma_pos=data[0]
+		sigma_radius=data[1]
+		for i in range(self.size):
+			z = np.random.uniform(2.0, sigma_pos[2])
+			frac = z/sigma_pos[2]
+			x = frac*np.random.uniform(-sigma_pos[0], sigma_pos[0])
+			y = frac*np.random.uniform(-sigma_pos[1], sigma_pos[1])
+			noise_pos = np.array([x,y,z])
+			noise_radius = np.random.normal(0.0, sigma_radius)
+			self.pos[i] = self.pos_init[i] + noise_pos
+			self.radius[i] = self.radius_init[i] + noise_radius
+			self.hit[i] = False
+	def render(self):
+		color = [0.8, 0.1, 0.1, 0.5]
+		glColor4d(color[0],color[1],color[2],color[3])
+		for i in range(self.size):
+			if self.hit[i]:
+				continue
+			p = self.pos[i]
+			r = self.radius[i]
+			glPushMatrix()
+			glTranslated(p[0],p[1],p[2])
+			glutSolidSphere(r, 20, 20)
+			glPopMatrix()
+	def generate(self, data=None):
+		if data is not None:
+			pos = data[0]
+			radius = data[1]
+			self.pos_init = pos[:]
+			self.radius_init = radius[:]
+			self.pos = pos[:]
+			self.radius = radius[:]
+			self.size = len(pos)
+			self.hit = [False] * self.size

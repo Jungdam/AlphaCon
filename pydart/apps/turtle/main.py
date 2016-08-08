@@ -22,11 +22,12 @@ import mmMath
 import myworld
 import gl_render
 
-np.set_printoptions(precision=4)
+np.set_printoptions(precision=3)
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
+warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/database/0.15_10000_8_warmup_db.txt'
 
 print('Example: turtle')
 
@@ -41,19 +42,46 @@ state['DrawAeroForce'] = True
 state['DrawGround'] = True
 state['DrawJoint'] = True
 state['DrawGrid'] = True
+state['DrawHistory'] = True
 state['EnableAerodynamics'] = True
 state['DrawScene'] = True
 state['DeepControl'] = False
 state['DeepTrainning'] = False
 state['DeepPingPongMode'] = True
-state['DeepTrainningResultShowMax'] = 2
-state['DeepTrainningResultShowCnt'] = 2
+state['DeepTrainningResultShowMax'] = 5
+state['DeepTrainningResultShowCnt'] = 5
 state['Test'] = False
 
 aero_force = []
 profile = profile.Profile()
 
 grid = []
+
+class History:
+    class aHistory:
+        def __init__(self, goal):
+            self.goal = goal
+            self.path = []
+            self.state = []
+            self.action = []
+            self.qvaule = 0
+        def add_path(self, transform):
+            self.path.append(transform)
+    def __init__(self, max_history=10):
+        self.history = []
+        self.max_history = max_history
+    def reset(self, goal=None):
+        del self.history[:]
+        if goal is not None:
+            self.begin(goal)
+    def begin(self, goal):
+        if len(self.history) >= self.max_history:
+            del self.history[0]
+        self.history.append(History.aHistory(goal))
+    def add_path(self, transform):
+        self.history[-1].add_path(transform)
+    def set_goal(self, goal):
+        self.history[-1].set_goal(goal)
 
 def apply_aerodynamics(skel):
     aero_force = []
@@ -99,8 +127,8 @@ def apply_aerodynamics(skel):
 
 def step_callback(world):
     skel = world.skels[0]
-    if state['EnableAerodynamics']:
-        apply_aerodynamics(skel)
+    # if state['EnableAerodynamics']:
+    #     apply_aerodynamics(skel)
     
     # if skel.controller.is_new_wingbeat():
     #     print 'action: ', skel.controller.get_action()
@@ -109,13 +137,14 @@ def step_callback(world):
 
     if state['DeepTrainning']:
         if not rl.is_finished_trainning():
-            rl.run(50, 10)
+            rl.run(10, 10)
             if not rl.is_warming_up():
                 state['DeepTrainning'] = False
                 state['DeepControl'] = True
                 world.reset()
                 skel.controller.reset()
                 scene.perturbate()
+                history.reset(scene.get_pos())
                 profile.print_time()
         if rl.is_finished_trainning():
             mynn.save_file()
@@ -125,12 +154,16 @@ def step_callback(world):
             # state_eye = skel.controller.get_eye().get_image(skel.body('trunk').T)
             state_sensor = rl.sensor()
             state_skel = skel.controller.get_state()
-            action = rl.get_action(state_sensor,state_skel,skel.controller.get_action_default())
-            skel.controller.add_action(action)
+            action = rl.get_action(state_sensor,state_skel)
+            skel.controller.add_action(action,True)
             qvalue = rl.get_qvalue(state_sensor,state_skel)
-            print 'Q:', np.array([qvalue]), 'S:', state_sensor, '\tA:', 
+            history.add_path(skel.body('trunk').T)
+            print 'R:', np.array([scene.score()]),
+            print 'Q:', np.array([qvalue]), 
+            print '\tS:', np.array(state_sensor), np.array(state_skel), 
+            print '\tA:', 
             ac.pprint(action)
-            if skel.controller.get_num_wingbeat() >= 10:
+            if skel.controller.get_num_wingbeat() >= 30:
                 show_cnt = state['DeepTrainningResultShowCnt']
                 show_cnt -= 1
                 if show_cnt <= 0:
@@ -145,10 +178,12 @@ def step_callback(world):
                     else:
                         state['DeepTrainning'] = False
                         state['DeepControl'] = True
+                    history.reset()
                 state['DeepTrainningResultShowCnt'] = show_cnt
                 world.reset()
                 skel.controller.reset()
-                scene.perturbate()
+                # scene.perturbate()
+                history.begin(scene.get_pos())
 
     if state['Test']:
         if skel.controller.is_new_wingbeat():
@@ -213,7 +248,12 @@ def render_callback():
         for g in grid:
             gl_render.render_transform(g,0.25,0.25)
 
+    if state['DrawHistory']:
+        for h in history.history:
+            gl_render.render_path(h.path,scale=0.2)
+
 def keyboard_callback(world, key):
+    skel = world.skels[0]
     """ Programmable interactions """
     global state
     if key == '1':
@@ -239,6 +279,9 @@ def keyboard_callback(world, key):
         world.reset()
         skel.controller.reset()
         scene.perturbate()
+        history.reset()
+        history.begin(scene.get_pos())
+        del trajectory[:]
         print scene.score()
     elif key == 't':
         rl.init_step()
@@ -259,16 +302,19 @@ def keyboard_callback(world, key):
         pydart.glutgui.play(True)
         profile.begin()
     elif key == 'g':
+        print 'reset'
         state['DeepTrainning'] = False
         state['DeepControl'] = True
         state['DeepTrainningResultShowCnt'] = state['DeepTrainningResultShowMax']
         custom_world.reset()
         scene.perturbate()
+        history.reset()
+        history.begin(scene.get_pos())
         pydart.glutgui.set_play_speed(10.0)
         pydart.glutgui.play(True)
     elif key == 'w':
         print '----- warmup data generation -----'
-        gen_warmup_data('warmup_db.txt', 0.15, 2000, 5)
+        gen_warmup_data('warmup_db.txt', 0.15, 10000, 8)
     elif key == '9':
         print world.states()
     elif key == '0':
@@ -282,7 +328,7 @@ def keyboard_callback(world, key):
         eye.save_image('test.png')
         im = eye.get_image()
         print im
-    elif key == 'o':
+    elif key == 'g':
         global grid
         custom_world.reset()
         num_wingbeat = 2
@@ -305,8 +351,9 @@ def keyboard_callback(world, key):
                     break
 
         grid = gen_grid([T_0,T_1,T_2],[0.15*math.pi,0.15*math.pi,0.75])
-
-        # optimizer.run(optimizer.obj_func_straight, optimizer.print_func_straight)
+    elif key == 'o':
+        result = optimizer.run(optimizer.obj_func_straight, optimizer.result_func_straight)
+        print result
     else:
         return False
     return True
@@ -389,8 +436,8 @@ mynn.initialize([3,\
     skel.controller.get_action_size()])
 # rl = deepRL.DeepRL(world, skel, scene, mynn, "warming_up_db.txt")
 # rl = deepRL.DeepRLSimple(world, skel, scene, mynn, "warming_up_db.txt")
-# rl = deepRL.DeepRLSimple(world, skel, scene, mynn, "0.15_50000_warmup_db.txt")
-rl = deepRL.DeepRLSimple(custom_world, scene, mynn)
+rl = deepRL.DeepRLSimple(custom_world, scene, mynn, warmup_file)
+# rl = deepRL.DeepRLSimple(custom_world, scene, mynn)
 
 # # Load warmup data for RL
 # warmup_data_cnt = 0
@@ -411,7 +458,9 @@ while True:
         world.push()
         break;
     world.step()
-    apply_aerodynamics(skel)
+
+history = History()
+history.begin(scene.get_pos())
 
 # Run the application
 if False:#'qt' in sys.argv:

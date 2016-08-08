@@ -108,12 +108,13 @@ class World(object):
         else:
             self.contact_history.append([])  # For the initial frame
 
-    def step(self, apply_controller=True):
+    def step(self, apply_controller=True, apply_aerodynamics=True):
+        if apply_aerodynamics:
+            papi.addAerodynamicForce(self.id)
         if apply_controller:
             for skel in self.skels:
                 if skel.controller is not None:
                     skel.tau = skel.controller.compute()
-
         papi.stepWorld(self.id)
         self._frame += 1
         self.contact_history.append(self.generated_contacts())

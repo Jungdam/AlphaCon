@@ -5,11 +5,14 @@
  * Georgia Tech Graphics Lab
  */
 
+ #define _USE_MATH_DEFINES
+
 #include "pydart_api.h"
 #include <iostream>
 #include <string>
 #include <vector>
 #include <map>
+#include <math.h>
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -312,7 +315,7 @@ void stepWorld(int wid) {
     using namespace dart::simulation;
     WorldPtr world = Manager::world(wid);
     world->step();
-    world->bake();
+    // world->bake();
 }
 
 void render(int wid) {
@@ -977,5 +980,125 @@ int readC3D(const char* const path, double* outv, int len) {
     } else {
         cerr << "invalid buffer size: " << len << endl;
         return -1;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Auxiliary Functions
+
+double C_D(double theta_rad) {
+    return 2.0 * (1.0-fabs(cos(theta_rad))) + 0.005;
+}
+
+double C_L(double theta_rad) {
+    double theta = theta_rad * 180.0 / M_PI;
+    double xp[4] = {-85.0, -10.0, 30.0, 85.0};
+    double fp[4] = {-0.2, -0.4, 2.0, 0.8};
+    int lo, hi;
+    double t;
+
+    if (theta <= xp[0] || theta >= xp[3]) {
+        return 0.0;
+    } else if (theta >= xp[2]) {
+        lo = 2; hi = 3;
+    } else if (theta >= xp[1]) {
+        lo = 1; hi = 2;
+    } else {
+        lo = 0; hi = 1;
+    }
+
+    t = (theta-xp[lo]) / (xp[hi]-xp[lo]);
+    return (1.0-t)*fp[lo]+fp[hi];
+}
+
+Eigen::Vector3d computeAerodynamics(const Eigen::Vector3d& velocity, const Eigen::Vector3d& normal, const double area) { 
+    const double rho = 1000.0;
+    const double eps = 1.0e-5;
+
+    // Eigen::Vector3d& v_norm = v.normalized();
+    
+    // Zero Velocities
+    double v_norm = velocity.norm();
+    if (v_norm < eps)
+        return Eigen::Vector3d::Zero();
+
+    Eigen::Vector3d v = -velocity;
+    Eigen::Vector3d d_normal = -normal.normalized();
+    Eigen::Vector3d d_drag = v.normalized();
+
+    // Check Reverse Direction
+    if (d_normal.dot(d_drag) < eps)
+        return Eigen::Vector3d::Zero();
+
+    Eigen::Vector3d l = Eigen::Vector3d::Zero();
+
+    // When normal and drag direction coincide
+    if ((d_normal-d_drag).norm() < eps) {
+        if (d_normal[0] > 0.5 || d_normal[1] > 0.5) {
+            l = Eigen::Vector3d(d_normal[1],-d_normal[0],0.0);
+        } else {
+            l = Eigen::Vector3d(0.0,-d_normal[2],d_normal[1]);
+        }
+    } else {
+        l = d_drag.cross(d_normal);
+    }
+
+    l.normalize();
+    Eigen::Vector3d d_lift = l.cross(d_drag);
+    d_lift.normalize();
+
+    Eigen::Vector3d v_n = d_drag.dot(d_normal) * v;
+    Eigen::Vector3d v_t = v - v_n;
+
+    double theta = atan2(v_n.dot(d_normal),v_t.norm());
+
+    Eigen::Vector3d f_drag = 0.5 * rho * area * C_D(theta) * v_norm * v_norm * d_drag;
+    Eigen::Vector3d f_lift = 0.5 * rho * area * C_L(theta) * v_norm * v_norm * d_lift;
+    Eigen::Vector3d f_total = f_drag + f_lift;
+
+    return f_total;
+}
+
+void addAerodynamicForce(int wid, int skid, int bid) {
+    using namespace dart::dynamics;
+    SkeletonPtr skel = Manager::skeleton(wid, skid);
+    BodyNode* body = skel->getBodyNode(bid);
+    if (!body) {
+        cerr << "cannot find the body : " << bid << endl;
+    }
+    double d[3];
+    getBodyNodeShapeBoundingBoxDim(wid, skid, bid, d);
+    Eigen::Vector3d v = body->getCOMLinearVelocity();
+    const Eigen::Isometry3d& T = body->getTransform();
+
+    for (size_t i = 0; i < 3; i++) {
+        Eigen::Vector3d n1 = Eigen::Vector3d(T(0,i),T(1,i),T(2,i));
+        Eigen::Vector3d n2 = -n1;
+        Eigen::Vector3d offset1 = Eigen::Vector3d::Zero();
+        Eigen::Vector3d offset2 = Eigen::Vector3d::Zero();
+        offset1[i] = 0.5*d[i];
+        offset2[i] = -0.5*d[i];
+        double area = d[(i+1)%3]*d[(i+2)%3];
+
+        Eigen::Vector3d f1 = computeAerodynamics(v,n1,area);
+        Eigen::Vector3d f2 = computeAerodynamics(v,n2,area);
+
+        body->addExtForce(f1, offset1);//, offset1, false, false);
+        body->addExtForce(f2, offset2);//, offset2, false, false);
+    }
+}
+
+void addAerodynamicForce(int wid, int skid) {
+    using namespace dart::dynamics;
+    SkeletonPtr skel = Manager::skeleton(wid, skid);
+    for (size_t i = 0; i < skel->getNumBodyNodes(); i++) {
+        addAerodynamicForce(wid, skid, i);
+    }
+}
+
+void addAerodynamicForce(int wid) {
+    using namespace dart::dynamics;
+    for (int skid = 0; skid < numSkeletons(wid); skid++) {
+        addAerodynamicForce(wid, skid);
     }
 }

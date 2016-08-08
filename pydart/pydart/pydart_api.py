@@ -341,6 +341,10 @@ getMarkerPosition = _pydart_api.getMarkerPosition
 def readC3D(*args):
   return _pydart_api.readC3D(*args)
 readC3D = _pydart_api.readC3D
+
+def addAerodynamicForce(*args):
+  return _pydart_api.addAerodynamicForce(*args)
+addAerodynamicForce = _pydart_api.addAerodynamicForce
 # This file is compatible with both classic and new-style classes.
 
 
