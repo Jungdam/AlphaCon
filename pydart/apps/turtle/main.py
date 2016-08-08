@@ -27,7 +27,7 @@ np.set_printoptions(precision=3)
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 wall_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/wall.urdf'
-warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.15_10000_5.warmup'
+warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.15_10000_8.warmup'
 
 print('Example: turtle')
 
@@ -146,8 +146,8 @@ def step_callback(world):
                 scene.perturbate()
                 history.reset(scene.get_pos())
                 profile.print_time()
-        if rl.is_finished_trainning():
-            mynn.save_file()
+        # if rl.is_finished_trainning():
+        #     mynn.save_file()
 
     if state['DeepControl']:
         if skel.controller.is_new_wingbeat():
@@ -182,7 +182,7 @@ def step_callback(world):
                 state['DeepTrainningResultShowCnt'] = show_cnt
                 world.reset()
                 skel.controller.reset()
-                # scene.perturbate()
+                scene.perturbate()
                 history.begin(scene.get_pos())
 
     if state['Test']:

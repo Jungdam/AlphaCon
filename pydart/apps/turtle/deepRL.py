@@ -69,7 +69,7 @@ class DeepRLBase:
 	__metaclass__ = ABCMeta
 	def __init__(self, warmup_file=None):
 		self.replay_buffer = {}
-		self.warmup_size = 70000
+		self.warmup_size = 50000
 		self.max_data_gen = 1000000
 		self.sample_size = 50
 		self.discount_factor = 0.99
@@ -110,35 +110,6 @@ class DeepRLBase:
 	@abstractmethod
 	def convert_warmup_file_to_buffer_data(self, file_name):
 		raise NotImplementedError("Must override")
-
-	# def postprocess_replay_buffer(self):
-	# 	max_size = self.max_buffer_size
-	# 	cur_size = self.buffer_size
-	# 	if cur_size > max_size:
-	# 		del self.replay_buffer[0:cur_size-max_size]
-	# 		self.buffer_size = max_size
-	# def sample_idx(self, sample_size=None):
-	# 	pick_history = []
-	# 	num_data = 0
-	# 	if sample_size is None:
-	# 		sample_size = self.sample_size
-	# 	if self.buffer_size < sample_size:
-	# 		sample_size = self.buffer_size
-	# 	while num_data < sample_size:
-	# 		pick = np.random.randint(self.buffer_size)
-	# 		if pick in pick_history:
-	# 			continue
-	# 		else:
-	# 			pick_history.append(pick)
-	# 		num_data += 1
-	# 	return pick_history
-	# def get_exprolation_prob(self):
-	# 	if self.is_warming_up():
-	# 		return self.init_exprolation_prob
-	# 	else:
-	# 		sigma_inv = 1.0
-	# 		return 1.0*self.init_exprolation_prob * \
-	# 			math.exp(-sigma_inv*float(self.buffer_size_accum)/float(self.max_data_gen))
 	def num_data_gen(self):
 		cnt = 0
 		for i in self.replay_buffer.keys():
@@ -398,6 +369,7 @@ class DeepRLSimple(DeepRLBase):
 			print self.warmup_file, "is loading..."
 			data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
 			self.replay_buffer['actor'].append(data,verbose=True)
+			self.warmup_size = self.replay_buffer['actor'].size_accum
 			cnt = 0
 			# Train random policy
 			print '--------- Train random policy ---------'
@@ -429,6 +401,7 @@ class DeepRLSimple(DeepRLBase):
 			self.scene.update()
 			state_sensor_init = self.sensor()
 			state_skel_init = self.world.skel.controller.get_state()
+			reward_init = self.reward()
 
 			self.world.reset()
 
@@ -437,8 +410,9 @@ class DeepRLSimple(DeepRLBase):
 			self.scene.update()
 			state_sensor_term = self.sensor()
 			state_skel_term = self.world.skel.controller.get_state()
+			reward_term = self.reward()
 
-			reward = self.reward()
+			reward = reward_term - reward_init
 
 			action_extra = ac.sub(action,action_default)
 			action_extra_flat = flatten(action_extra)

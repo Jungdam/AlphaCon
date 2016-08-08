@@ -156,7 +156,7 @@ def keyboard_callback(key):
         return False
     return True
 
-data_global,data_local = load_data('./data/database/0.15_10000_8_warmup_db.txt')
+data_global,data_local = load_data('./data/warmup/0.15_10000_8.warmup')
 
 pydart.glutgui.glutgui_base.run(
 	title='Data Checker', 
