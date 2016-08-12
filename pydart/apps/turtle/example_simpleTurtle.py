@@ -9,7 +9,8 @@ import numpy as np
 import controller
 import aerodynamics
 import eye
-import nnSimple
+import nn
+import deepRL
 import deepRLSimple
 import scene
 from PIL import Image
@@ -430,7 +431,7 @@ skel.controller = controller.Controller(world, skel, eye)
 #
 # Initialize nn and RL
 #
-mynn = nnSimple.MyNNSimple('net')
+mynn = nn.MyNNSimple('net')
 mynn.initialize([3,\
     skel.controller.get_state_size(),\
     skel.controller.get_action_size()])

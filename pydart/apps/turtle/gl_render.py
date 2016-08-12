@@ -30,7 +30,7 @@ def render_transform(T,scale=1.0,line_width=1.0,point_size=1.0):
     glEnd()
 
     glPopMatrix()
-def render_ground(size=[20.0,20.0],dsize=[1.0,1.0],color=[0.0,0.0,0.0],line_width=1.0):
+def render_ground(size=[20.0,20.0],dsize=[1.0,1.0],color=[0.0,0.0,0.0],line_width=1.0,axis='y'):
     lx = size[0]
     lz = size[1]
     dx = dsize[0]
@@ -40,16 +40,40 @@ def render_ground(size=[20.0,20.0],dsize=[1.0,1.0],color=[0.0,0.0,0.0],line_widt
 
     glColor3d(color[0],color[1],color[2])
     glLineWidth(line_width)
-    for i in np.linspace(-0.5*lx,0.5*lx,nx):
-        glBegin(GL_LINES)
-        glVertex3d(i,0,-0.5*lz)
-        glVertex3d(i,0,0.5*lz)
-        glEnd()
-    for i in np.linspace(-0.5*lz,0.5*lz,nz):
-        glBegin(GL_LINES)
-        glVertex3d(-0.5*lx,0,i)
-        glVertex3d(0.5*lx,0,i)
-        glEnd()
+
+    if axis is 'x':
+        for i in np.linspace(-0.5*lx,0.5*lx,nx):
+            glBegin(GL_LINES)
+            glVertex3d(0,i,-0.5*lz)
+            glVertex3d(0,i,0.5*lz)
+            glEnd()
+        for i in np.linspace(-0.5*lz,0.5*lz,nz):
+            glBegin(GL_LINES)
+            glVertex3d(0,-0.5*lx,i)
+            glVertex3d(0,0.5*lx,i)
+            glEnd()
+    elif axis is 'y':
+        for i in np.linspace(-0.5*lx,0.5*lx,nx):
+            glBegin(GL_LINES)
+            glVertex3d(i,0,-0.5*lz)
+            glVertex3d(i,0,0.5*lz)
+            glEnd()
+        for i in np.linspace(-0.5*lz,0.5*lz,nz):
+            glBegin(GL_LINES)
+            glVertex3d(-0.5*lx,0,i)
+            glVertex3d(0.5*lx,0,i)
+            glEnd()
+    elif axis is 'z':
+        for i in np.linspace(-0.5*lx,0.5*lx,nx):
+            glBegin(GL_LINES)
+            glVertex3d(i,-0.5*lz,0)
+            glVertex3d(i,0.5*lz,0)
+            glEnd()
+        for i in np.linspace(-0.5*lz,0.5*lz,nz):
+            glBegin(GL_LINES)
+            glVertex3d(-0.5*lx,i,0)
+            glVertex3d(0.5*lx,i,0)
+            glEnd()
 
     render_transform(mmMath.I_SE3())
 def render_path(data,color=[0.0,0.0,0.0],scale=1.0,line_width=1.0,point_size=1.0):
