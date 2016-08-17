@@ -9,8 +9,8 @@ def weight_variable(name, shape):
 	xavier =tf.contrib.layers.xavier_initializer()
 	return tf.get_variable(name, shape=shape, initializer=xavier)
 def bias_variable(name, shape):
-	initial = tf.truncated_normal(shape, stddev=0.5)
-	return tf.Variable(initial)
+	initial = tf.truncated_normal(shape, stddev=1.0)
+	return tf.Variable(initial,name=name)
 	# xavier =tf.contrib.layers.xavier_initializer()
 	# return tf.get_variable(name, shape=shape, initializer=xavier)
 def conv2d(x, W):
@@ -35,28 +35,31 @@ class Normalizer:
 			d.append(self.mean + datum*(self.sigma+self.epsilon))
 
 class Variables:
-	def __init__(self, sess, other=None):
-		self.sess = sess
-		self.var = []
-		self.op = []
-		if other is not None:
-			for var in other.var:
-				var_new = tf.Variable(var.initialized_value())
-				self.var.append(var_new)
-				self.op.append(var_new.assign(var))
+	def __init__(self):
+		self.var = {}
+	def get_variable(self, name, from_copy=False):
+		if from_copy:
+			return self.var[name][1]
+		else:
+			return self.var[name][0]
 	def weight_variable(self, name, shape):
 		var = weight_variable(name, shape)
-		self.var.append(var)
+		self.var[name] = [var, None, None]
 		return var
 	def bias_variable(self, name, shape):
 		var = bias_variable(name, shape)
-		self.var.append(var)
+		self.var[name] = [var, None, None]
 		return var
-	def update(self):
-		if not self.op:
-			raise AssertionError()
-		for op in self.op:
-			self.sess.run(op)
+	def make_copy(self):
+		for key, value in self.var.iteritems():
+			var = value[0]
+			var_copy = tf.Variable(var.initialized_value(), name=key+'_copy')
+			value[1] = var_copy
+			value[2] = var_copy.assign(var)
+	def save(self, sess):
+		for key, value in self.var.iteritems():
+			op = value[2]
+			sess.run(op)
 
 class NNBase:
 	__metaclass__ = ABCMeta

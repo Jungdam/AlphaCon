@@ -52,8 +52,8 @@ class DeepRLBase:
 		self.warmup_size = 50000
 		self.max_data_gen = 1000000
 		self.sample_size = 50
-		self.discount_factor = 0.99
-		self.exprolation_prob = 0.25
+		self.discount_factor = 0.9
+		self.exprolation_prob = 0.20
 		self.exprolation_noise = 0.1
 		self.warmup_file = warmup_file
 	def get_max_data_generation(self):
@@ -95,6 +95,8 @@ class DeepRLBase:
 	def is_finished_trainning(self):
 		return self.num_data_gen() >= self.max_data_gen
 	def run(self, max_episode=100, max_iter_per_episode=100, verbose=True):
+		if self.is_finished_trainning():
+			return
 		for i in xrange(max_episode):
 			self.init_step()
 			# Generate trainning tuples

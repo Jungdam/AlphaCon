@@ -13,6 +13,9 @@ import tensorflow as tf
 np.set_printoptions(precision=3)
 flag = {}
 flag['Train'] = False
+cnt_target_update = 0
+max_target_update = 10
+log_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/debug/log'
 
 def R(theta):
 	c = math.cos(theta)
@@ -29,7 +32,7 @@ class Actor:
 	def step_forward(self, dt, vel):
 		self.pos = self.pos + vel[0]*self.ori
 		self.rotate(vel[1]*dt)
-	def set_random_state(self, sigma=[5,5,0.5*math.pi]):
+	def set_random_state(self, sigma=[3.5,3.5,0.5*math.pi]):
 		r = np.random.normal([0,0,0], sigma)
 		self.pos = r[0:2]
 		self.rotate(r[2])
@@ -53,7 +56,7 @@ class Envi:
 		self.detective = Actor()
 		self.criminal = Actor()
 		self.vel_limit = [np.array([0.0,-0.2*math.pi]),np.array([1.0,0.2*math.pi])]
-		self.pos_limit = [np.array([-10.0,-10.0]),np.array([10.0,10.0])]
+		self.pos_limit = [np.array([-100.0,-100.0]),np.array([100.0,100.0])]
 		self.set_random_state()
 	def set_random_state(self, apply_detective=True, apply_criminal=True):
 		if apply_detective:
@@ -75,7 +78,8 @@ class Envi:
 		y = np.dot(R(0.5*math.pi),x)
 		R_inv = np.array([x,y])
 		criminal_dir = np.dot(R_inv,diff)
-		return np.hstack([self.detective.pos, self.detective.ori, criminal_dir])
+		return criminal_dir
+		# return np.hstack([self.detective.pos, x, criminal_dir])
 		# w_dir0 = np.dot(R_inv,np.array([self.pos_limit[0][0],self.pos_limit[0][1]]))
 		# w_dir1 = np.dot(R_inv,np.array([self.pos_limit[1][0],self.pos_limit[1][1]]))
 		# w_dir2 = np.dot(R_inv,np.array([self.pos_limit[0][0],self.pos_limit[1][1]]))
@@ -99,16 +103,16 @@ class Envi:
 		p_y = min(p_y, self.pos_limit[1][1])
 		return np.array([p_x,p_y])
 	def step_forward(self, dt, vel_detective=None, vel_criminal=None):
-		good_init = self.goodness()
+		# good_init = self.goodness()
 		if vel_detective is not None:
 			self.detective.step_forward(dt, self.limit_velocity(vel_detective))
 			self.detective.pos = self.limit_position(self.detective.pos)
 		if vel_criminal is not None:
 			self.criminal.step_forward(dt, self.limit_velocity(vel_criminal))
 			self.criminal.pos = self.limit_position(self.criminal.pos)
-		good_term = self.goodness()
-		reward_delta = good_term - good_init
-		reward = self.goodness() + reward_delta
+		# good_term = self.goodness()
+		# reward_delta = good_term - good_init
+		reward = self.goodness()
 		if self.check_collision(self.detective.pos):
 			return -1.0
 		else:
@@ -117,11 +121,13 @@ class Envi:
 class NNToy(nn.NNBase):
 	def __init__(self, name):
 		nn.NNBase.__init__(self, name)
-		self.dropout_keep_prob = 0.5
+		self.dropout_keep_prob = 1.0
 		self.train_a = None
 		self.train_q = None
 		self.eval_q = None
 		self.eval_a = None
+		self.eval_q_copy = None
+		self.eval_a_copy = None
 		self.placeholder_state = None
 		self.placeholder_target_qvalue = None
 		self.placeholder_target_action = None
@@ -129,8 +135,9 @@ class NNToy(nn.NNBase):
 		self.loss_q = None
 		self.loss_a = None
 		self.learning_rate = 0.001
-		self.var_tar = None
-		self.var_cur = None
+		self.var = None
+		self.writer = None
+		self.merged = None
 	def initialize(self, data):
 		tf.reset_default_graph()
 		with self.graph.as_default():
@@ -142,53 +149,60 @@ class NNToy(nn.NNBase):
 			target_action = tf.placeholder(tf.float32, [None,a])
 			keep_prob = tf.placeholder(tf.float32)
 
-			self.var_cur = nn.Variables(self.sess)
+			self.var = nn.Variables()
+
+			#
+			# Main NN
+			#
+
 			# 1st layer
-			W_fc1 = self.var_cur.weight_variable('W_fc1',[d, 32])
-			b_fc1 = self.var_cur.bias_variable('b_fc1',[32])
+			W_fc1 = self.var.weight_variable('W_fc1',[d, 32])
+			b_fc1 = self.var.bias_variable('b_fc1',[32])
 			h_fc1 = tf.nn.relu(tf.matmul(state, W_fc1) + b_fc1)
 			# 2nd layer
-			W_fc2 = self.var_cur.weight_variable('W_fc2',[32, 32])
-			b_fc2 = self.var_cur.bias_variable('b_fc2',[32])
+			W_fc2 = self.var.weight_variable('W_fc2',[32, 32])
+			b_fc2 = self.var.bias_variable('b_fc2',[32])
 			h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
 			# 3rd layer
-			W_fc3 = self.var_cur.weight_variable('W_fc3',[32, 16])
-			b_fc3 = self.var_cur.bias_variable('b_fc3',[16])
+			W_fc3 = self.var.weight_variable('W_fc3',[32, 16])
+			b_fc3 = self.var.bias_variable('b_fc3',[16])
 			h_fc3 = tf.nn.relu(tf.matmul(h_fc2, W_fc3) + b_fc3)
 			h_fc3_drop = tf.nn.dropout(h_fc3, keep_prob)
 			# Layer for Q value
-			W_qvalue = self.var_cur.weight_variable('W_qvalue',[16, 1])
-			b_qvalue = self.var_cur.bias_variable('b_qvalue',[1])
+			W_qvalue = self.var.weight_variable('W_qvalue',[16, 1])
+			b_qvalue = self.var.bias_variable('b_qvalue',[1])
 			h_qvalue = tf.matmul(h_fc3_drop, W_qvalue) + b_qvalue
 			# Layer for action
-			W_action = self.var_cur.weight_variable('W_action',[16, a])
-			b_action = self.var_cur.bias_variable('b_action',[a])
+			W_action = self.var.weight_variable('W_action',[16, a])
+			b_action = self.var.bias_variable('b_action',[a])
 			h_action = tf.matmul(h_fc3_drop, W_action) + b_action
 
-			self.var_tar = nn.Variables(self.sess, self.var_cur)
-						
+			self.var.make_copy()
 
-			# # 1st layer
-			# W_fc1 = nn.weight_variable('W_fc1',[d, 32])
-			# b_fc1 = nn.bias_variable('b_fc1',[32])
-			# h_fc1 = tf.nn.relu(tf.matmul(state, W_fc1) + b_fc1)
-			# # 2nd layer
-			# W_fc2 = nn.weight_variable('W_fc2',[32, 32])
-			# b_fc2 = nn.bias_variable('b_fc2',[32])
-			# h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
-			# # 3rd layer
-			# W_fc3 = nn.weight_variable('W_fc3',[32, 16])
-			# b_fc3 = nn.bias_variable('b_fc3',[16])
-			# h_fc3 = tf.nn.relu(tf.matmul(h_fc2, W_fc3) + b_fc3)
-			# h_fc3_drop = tf.nn.dropout(h_fc3, keep_prob)
-			# # Layer for Q value
-			# W_qvalue = nn.weight_variable('W_qvalue',[16, 1])
-			# b_qvalue = nn.bias_variable('b_qvalue',[1])
-			# h_qvalue = tf.matmul(h_fc3_drop, W_qvalue) + b_qvalue
-			# # Layer for action
-			# W_action = nn.weight_variable('W_action',[16, a])
-			# b_action = nn.bias_variable('b_action',[a])
-			# h_action = tf.matmul(h_fc3_drop, W_action) + b_action
+			#
+			# Copied NN for delayed target value evaluation
+			#
+
+			# 1st layer
+			W_fc1_copy = self.var.get_variable('W_fc1',True)
+			b_fc1_copy = self.var.get_variable('b_fc1',True)
+			h_fc1_copy = tf.nn.relu(tf.matmul(state, W_fc1_copy) + b_fc1_copy)
+			# 2nd layer
+			W_fc2_copy = self.var.get_variable('W_fc2',True)
+			b_fc2_copy = self.var.get_variable('b_fc2',True)
+			h_fc2_copy = tf.nn.relu(tf.matmul(h_fc1_copy, W_fc2_copy) + b_fc2_copy)
+			# 3rd layer
+			W_fc3_copy = self.var.get_variable('W_fc3',True)
+			b_fc3_copy = self.var.get_variable('b_fc3',True)
+			h_fc3_copy = tf.nn.relu(tf.matmul(h_fc2_copy, W_fc3_copy) + b_fc3_copy)
+			# Layer for Q value
+			W_qvalue_copy = self.var.get_variable('W_qvalue',True)
+			b_qvalue_copy = self.var.get_variable('b_qvalue',True)
+			h_qvalue_copy = tf.matmul(h_fc3_copy, W_qvalue_copy) + b_qvalue_copy
+			# Layer for action
+			W_action_copy = self.var.get_variable('W_action',True)
+			b_action_copy = self.var.get_variable('b_action',True)
+			h_action_copy = tf.matmul(h_fc3_copy, W_action_copy) + b_action_copy
 
 			# Optimizer
 			loss_qvalue = tf.reduce_mean(tf.square(target_qvalue - h_qvalue))
@@ -198,14 +212,14 @@ class NNToy(nn.NNBase):
 			# loss_qvalue = tf.reduce_mean(-tf.reduce_sum(target_qvalue * tf.log(h_qvalue), reduction_indices=[1]))
 			# loss_action = tf.reduce_mean(-tf.reduce_sum(target_action * tf.log(h_action), reduction_indices=[1]))
 
-			global_step = tf.Variable(0, trainable=False)
-			learning_rate = tf.train.exponential_decay(
-				self.learning_rate, global_step, 1000000, 0.96, staircase=True)
+			# global_step = tf.Variable(0, trainable=False)
+			# learning_rate = tf.train.exponential_decay(
+			# 	self.learning_rate, global_step, 1000000, 0.96, staircase=True)
 
 			# self.train_q = tf.train.AdamOptimizer(1e-3).minimize(loss_qvalue)
 			# self.train_a = tf.train.AdamOptimizer(1e-3).minimize(loss_action)
-			opt_q = tf.train.GradientDescentOptimizer(learning_rate)
-			opt_a = tf.train.GradientDescentOptimizer(learning_rate)
+			opt_q = tf.train.GradientDescentOptimizer(self.learning_rate)
+			opt_a = tf.train.GradientDescentOptimizer(self.learning_rate)
 			# opt_q = tf.train.AdamOptimizer(1e-4)
 			# opt_a = tf.train.AdamOptimizer(1e-4)
 
@@ -225,6 +239,8 @@ class NNToy(nn.NNBase):
 			# Evaultion
 			self.eval_q = h_qvalue
 			self.eval_a = h_action
+			self.eval_q_copy = h_qvalue_copy
+			self.eval_a_copy = h_action_copy
 			# Place holders
 			self.placeholder_state = state
 			self.placeholder_target_qvalue = target_qvalue
@@ -235,19 +251,30 @@ class NNToy(nn.NNBase):
 			self.loss_a = loss_action
 			# Initialize all variables
 			self.sess = tf.Session(graph=self.graph)
-			self.sess.run(tf.initialize_all_variables())
 			self.saver = tf.train.Saver()
+			# Summary
+			self.merged = tf.merge_all_summaries()
+			self.writer = tf.train.SummaryWriter(log_dir, self.graph)
+			self.writer.flush()
+
+			self.sess.run(tf.initialize_all_variables())
 			self.initialized = True
-	def eval_qvalue(self, data):
-		val = self.sess.run(self.eval_q, feed_dict={
-			self.placeholder_state: data[0],
-			self.placeholder_dropout_keep_prob: 1.0})
-		return val
-	def eval_action(self, data):
-		val = self.sess.run(self.eval_a, feed_dict={
-			self.placeholder_state: data[0],
-			self.placeholder_dropout_keep_prob: 1.0})
-		return val
+	def eval_qvalue(self, data, from_copy=False):
+		if from_copy:
+			return self.sess.run(self.eval_q_copy, feed_dict={
+				self.placeholder_state: data[0]})
+		else:
+			return self.sess.run(self.eval_q, feed_dict={
+				self.placeholder_state: data[0],
+				self.placeholder_dropout_keep_prob: 1.0})
+	def eval_action(self, data, from_copy=False):
+		if from_copy:
+			return self.sess.run(self.eval_a_copy, feed_dict={
+				self.placeholder_state: data[0]})
+		else:
+			return self.sess.run(self.eval_a, feed_dict={
+				self.placeholder_state: data[0],
+				self.placeholder_dropout_keep_prob: 1.0})
 	def loss_qvalue(self, data):
 		val = self.sess.run(self.loss_q,feed_dict={
 			self.placeholder_state: data[0],
@@ -270,31 +297,36 @@ class NNToy(nn.NNBase):
 			self.placeholder_state: data[0],
 			self.placeholder_target_action: data[1],
 			self.placeholder_dropout_keep_prob: self.dropout_keep_prob})
+	def save_variables(self):
+		self.var.save(self.sess)
 
 class DeepRLToy(deepRL.DeepRLBase):
 	def __init__(self, envi, nn, warmup_file=None):
 		deepRL.DeepRLBase.__init__(self, warmup_file)
-		self.replay_buffer['actor'] = deepRL.ReplayBuffer(500000)
-		self.replay_buffer['critic'] = deepRL.ReplayBuffer(500000)
+		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
+		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
 		self.envi = envi
 		self.nn = nn
-		self.warmup_size = 50000
+		self.warmup_size = 100000
 		self.max_data_gen = 10000000
-		self.sample_size = 64
+		self.sample_size = 32
 		
 		cnt = 0
 		while True:
+			self.init_step()
 			buffer_name, datum = self.step(full_random=True)
 			if datum is None:
 				self.init_step()
 			else:
 				self.replay_buffer['actor'].append([datum])
-				self.replay_buffer['critic'].append([datum])
+				# self.replay_buffer['critic'].append([datum])
 				cnt += 1
 			if cnt >= self.warmup_size:
 				break
 			if cnt%1000 == 0:
 				print cnt, ' data were generated'
+
+		self.save_variables()
 		
 		# # Train greedy policy
 		# sample_idx = self.replay_buffer['actor'].sample_idx(5000)
@@ -389,7 +421,7 @@ class DeepRLToy(deepRL.DeepRLBase):
 			np.array(data_reward),\
 			np.array(data_state_prime)]
 	def compute_target_qvalue(self, reward, state_prime):
-		qvalue_prime = self.nn.eval_qvalue([state_prime])
+		qvalue_prime = self.nn.eval_qvalue([state_prime], True)
 		target_qvalue = reward + self.discount_factor*qvalue_prime
 		return target_qvalue
 	def train_qvalue(self, sample_size, iteration=10, verbose=False):
@@ -415,7 +447,7 @@ class DeepRLToy(deepRL.DeepRLBase):
 			if check_qvalue:
 				train_state = []
 				train_action = []
-				qvalue = self.nn.eval_qvalue([data_state])
+				qvalue = self.nn.eval_qvalue([data_state], True)
 				target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
 				for i in xrange(len(qvalue)):
 					if target_qvalue[i][0] > qvalue[i][0]:
@@ -433,10 +465,10 @@ class DeepRLToy(deepRL.DeepRLBase):
 		self.train_qvalue(self.sample_size)
 		self.train_action(self.sample_size)
 	def get_action(self, state):
-		val = self.nn.eval_action([[state]])
+		val = self.nn.eval_action([[state]], True)
 		return val[0]
 	def get_qvalue(self, state):
-		val = self.nn.eval_qvalue([[state]])
+		val = self.nn.eval_qvalue([[state]], True)
 		return val[0][0]
 	def loss_qvalue(self, sample_size=100, buffer_name='critic'):
 		sample_idx = self.replay_buffer[buffer_name].sample_idx(sample_size)
@@ -462,6 +494,8 @@ class DeepRLToy(deepRL.DeepRLBase):
 		q = self.loss_qvalue(sample_size)
 		a = self.loss_action(sample_size)
 		print 'Loss values: ', 'qvalue:', q, 'action:', a
+	def save_variables(self):
+		self.nn.save_variables()
 dt = 0.5
 myEnvi = Envi()
 myNN = NNToy('net')
@@ -472,11 +506,17 @@ def step_callback():
 	return
 
 def render_callback():
+	global cnt_target_update
 	gl_render.render_ground(color=[1.0,1.0,1.0],axis='z')
 	myEnvi.detective.render(color=[0,0,1])
 	myEnvi.criminal.render(color=[1,0,0])
 	if flag['Train']:
-		myDeepRL.run(50, 50)
+		myDeepRL.run(100, 25)
+		if cnt_target_update>=max_target_update:
+			myDeepRL.save_variables()
+			cnt_target_update = 0
+		else:
+			cnt_target_update += 1
 
 def keyboard_callback(key):
 	if key == 'r':
