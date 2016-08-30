@@ -9,7 +9,7 @@ def weight_variable(name, shape):
 	xavier =tf.contrib.layers.xavier_initializer()
 	return tf.get_variable(name, shape=shape, initializer=xavier)
 def bias_variable(name, shape):
-	initial = tf.truncated_normal(shape, stddev=1.0)
+	initial = tf.truncated_normal(shape, stddev=0.1)
 	return tf.Variable(initial,name=name)
 	# xavier =tf.contrib.layers.xavier_initializer()
 	# return tf.get_variable(name, shape=shape, initializer=xavier)
@@ -50,16 +50,62 @@ class Variables:
 		var = bias_variable(name, shape)
 		self.var[name] = [var, None, None]
 		return var
-	def make_copy(self):
+	def copy_all(self):
 		for key, value in self.var.iteritems():
 			var = value[0]
 			var_copy = tf.Variable(var.initialized_value(), name=key+'_copy')
 			value[1] = var_copy
 			value[2] = var_copy.assign(var)
+	def copy(self, name):
+		value = self.var[name]
+		var = value[0]
+		var_copy = tf.Variable(var.initialized_value(), name=name+'_copy')
+		value[1] = var_copy
+		value[2] = var_copy.assign(var)
+		return var_copy
 	def save(self, sess):
 		for key, value in self.var.iteritems():
 			op = value[2]
 			sess.run(op)
+	def _print(self):
+		for key, value in self.var.iteritems():
+			print value
+
+class Layer:
+	def __init__(self, name, var, var_copied=False, tensor_in=None, dim_in=0, dim_out=0, 
+		act_fn=tf.nn.relu, dropout_enabled=False, dropout_placeholder=None):
+		self.name = name
+		self.var = var
+		self.var_copied = var_copied
+		self.W = None
+		self.b = None
+		self.h = None
+		self.dim_in = dim_in
+		self.dim_out = dim_out
+		self.act_fn = act_fn
+		self.dropout_enabled = dropout_enabled
+		self.dropout_placeholder = dropout_placeholder
+		self.initialize(tensor_in)
+	def initialize(self, tensor_in):
+		if self.var_copied:
+			self.W = self.var.copy(self.name+'_W')
+			self.b = self.var.copy(self.name+'_b')
+		else:
+			self.W = self.var.weight_variable(self.name+'_W',[self.dim_in, self.dim_out])
+			self.b = self.var.bias_variable(self.name+'_b',[self.dim_out])
+		if self.act_fn:
+			h = self.act_fn(tf.matmul(tensor_in, self.W) + self.b)
+		else:
+			h = tf.matmul(tensor_in, self.W) + self.b
+		if self.dropout_enabled and self.dropout_placeholder is not None:
+			self.dropout_enabled = True
+			h = tf.nn.dropout(h, self.dropout_placeholder)
+		else:
+			self.dropout_enabled = False
+		self.h = h
+	def copy(self, tensor_in):
+		return Layer(self.name, self.var, True, 
+			tensor_in, self.dim_in, self.dim_out, self.act_fn)
 
 class NNBase:
 	__metaclass__ = ABCMeta
@@ -69,6 +115,9 @@ class NNBase:
 		self.initialized = False
 		self.sess = None
 		self.saver = None
+		self.var = Variables()
+		self.writer = None
+		self.merged = None
 	@abstractmethod
 	# Define the neural network graph 
 	def initialize(self):
@@ -107,6 +156,20 @@ class NNBase:
 		summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 		summary_str = sess.run(summary_op, feed_dict=feed_dict)
 		summary_writer.add_summary(summary_str, step)
+	def save(self, dir):
+		save_path = self.saver.save(self.sess, dir+self.name+'.ckpt')
+		print("Model saved in file: %s" % save_path)
+	def restore(self, file):
+		if file is None:
+			return False
+		ckpt = tf.train.get_checkpoint_state(file)
+		if ckpt and ckpt.model_checkpoint_path:
+			self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+			print '[ NeuralNet ]', 'Checkpoint', ckpt.model_checkpoint_path, 'is loaded'
+			return True
+		else:
+			print '[ NeuralNet ]', 'Checkpoint', file, 'is invalid'
+			return False
 		
 # class MyNN(NNBase):
 # 	def __init__(self, name):

@@ -2,6 +2,7 @@ from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
 import pydart
+import controller
 import gl_render
 import numpy as np
 import math
@@ -9,117 +10,105 @@ import basics
 import deepRL
 import nn
 import tensorflow as tf
+import mmMath
+import action as ac
+import pickle
 
 np.set_printoptions(precision=3)
 flag = {}
 flag['Train'] = False
 cnt_target_update = 0
-max_target_update = 10
+max_target_update = 20
 log_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/log'
 ckpt_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/'
+skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
+warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.15_10000_8.warmup'
 
-def R(theta):
-	c = math.cos(theta)
-	s = math.sin(theta)
-	return np.array([[c,-s],[s,c]])
-
-def vel_random(mu=np.array([0.5,0.0]),sigma=np.array([0.25,0.1*math.pi])):
-	return np.random.normal(mu, sigma)
-
-class Actor:
-	def __init__(self, pos=np.array([0,0]), ori=np.array([1,0])):
-		self.pos = pos
-		self.ori = ori
-	def step_forward(self, dt, vel):
-		self.pos = self.pos + vel[0]*self.ori
-		self.rotate(vel[1]*dt)
-	def set_random_state(self, sigma=[3.5,3.5,0.5*math.pi]):
-		r = np.random.normal([0,0,0], sigma)
-		self.pos = r[0:2]
-		self.rotate(r[2])
-	def rotate(self, theta):
-		self.ori = np.dot(R(theta), self.ori)	
-	def render(self, color=[0.5,0.5,0.5]):
-		glColor3d(color[0],color[1],color[2])
-		glLineWidth(5.0)
-
-		glPushMatrix()
-		glTranslated(self.pos[0],self.pos[1],0)
-		glutSolidSphere(0.5, 10, 10)
-		glBegin(GL_LINES)
-		glVertex3d(0,0,0)
-		glVertex3d(self.ori[0],self.ori[1],0)
-		glEnd()
-		glPopMatrix()
+pydart.init()
+print('pydart initialization OK')
 
 class Envi:
-	def __init__(self):
-		self.detective = Actor()
-		self.criminal = Actor()
-		self.vel_limit = [np.array([0.0,-0.3*math.pi]),np.array([1.0,0.3*math.pi])]
-		self.pos_limit = [np.array([-10.0,-10.0]),np.array([10.0,10.0])]
-		self.set_random_state()
-	def set_random_state(self, apply_detective=True, apply_criminal=True):
-		if apply_detective:
-			self.detective.set_random_state()
-			self.detective.pos = self.limit_position(self.detective.pos)
-		if apply_criminal:
-			self.criminal.set_random_state()
-			self.criminal.pos = self.limit_position(self.criminal.pos)
+	def __init__(self, dt, skel_file, num_init_wingbeat=2):
+		self.world = pydart.create_world(dt, skel_file)
+		self.skel = self.world.skels[0]
+		self.skel.controller = controller.Controller(self.world, self.skel)
+		self.target_mu = np.array([0,1.0,7.0])
+		self.target_sigma = np.array([1.0,1.0,2.0])
+		self.target = np.random.normal(self.target_mu,self.target_sigma)
+		while True:
+		    if self.skel.controller.get_num_wingbeat() >= num_init_wingbeat:
+		        self.world.push()
+		        self.world.push()
+		        self.set_random_state()
+		        break;
+		    self.world.step()
+	def get_target_pos(self):
+		return self.target
+	def set_random_state(self):
+		self.world.reset()
+		self.skel.controller.reset()
+		self.target = np.random.normal(self.target_mu,self.target_sigma)
+		return
 	def goodness(self):
-		if self.check_collision(self.detective.pos):
-			return -1.0
-		else:
-			diff = self.criminal.pos-self.detective.pos
-			l = np.linalg.norm(diff)
-			return math.exp(-0.5*l*l)# + 0.1*math.exp(-5.0*((np.dot(self.detective.ori,diff/l)-1.0)**2))
+		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
+		diff = p-self.target
+		l = np.linalg.norm(diff)
+		return math.exp(-0.5*l*l)
 	def state(self):
-		diff = self.criminal.pos-self.detective.pos
-		x = self.detective.ori[:]
-		y = np.dot(R(0.5*math.pi),x)
-		R_inv = np.array([x,y])
-		criminal_dir = np.dot(R_inv,diff)
-		# return criminal_dir
-		return np.hstack([self.detective.pos[:], self.detective.ori[:], criminal_dir])
-		# w_dir0 = np.dot(R_inv,np.array([self.pos_limit[0][0],self.pos_limit[0][1]]))
-		# w_dir1 = np.dot(R_inv,np.array([self.pos_limit[1][0],self.pos_limit[1][1]]))
-		# w_dir2 = np.dot(R_inv,np.array([self.pos_limit[0][0],self.pos_limit[1][1]]))
-		# w_dir3 = np.dot(R_inv,np.array([self.pos_limit[1][0],self.pos_limit[0][1]]))
-		# return np.hstack([criminal_dir,w_dir0,w_dir1,w_dir2,w_dir3])
-	def limit_velocity(self, vel):
-		v = max(vel[0], self.vel_limit[0][0])
-		v = min(v, self.vel_limit[1][0])
-		w = max(vel[1], self.vel_limit[0][1])
-		w = min(w, self.vel_limit[1][1])
-		return np.array([v,w])
-	def check_collision(self, pos):
-		return pos[0]<=self.pos_limit[0][0] or \
-			pos[0]>=self.pos_limit[1][0] or \
-			pos[1]<=self.pos_limit[0][1] or \
-			pos[1]>=self.pos_limit[1][1]
-	def limit_position(self, pos):
-		p_x = max(pos[0], self.pos_limit[0][0])
-		p_x = min(p_x, self.pos_limit[1][0])
-		p_y = max(pos[1], self.pos_limit[0][1])
-		p_y = min(p_y, self.pos_limit[1][1])
-		return np.array([p_x,p_y])
-	def step_forward(self, dt, vel_detective=None, vel_criminal=None):
-		# good_init = self.goodness()
-		if vel_detective is not None:
-			self.detective.step_forward(dt, self.limit_velocity(vel_detective))
-			self.detective.pos = self.limit_position(self.detective.pos)
-		if vel_criminal is not None:
-			self.criminal.step_forward(dt, self.limit_velocity(vel_criminal))
-			self.criminal.pos = self.limit_position(self.criminal.pos)
-		# good_term = self.goodness()
-		# reward_delta = good_term - good_init
-		reward = self.goodness()
-		if self.check_collision(self.detective.pos):
-			return -1.0
-		else:
-			return reward
+		#
+		# State of skeleton
+		#
+		state_skel = []
+		# prepare for computing local coordinate of the trunk
+		body_trunk = self.skel.body('trunk')
+		R_trunk,p_trunk = mmMath.T2Rp(body_trunk.T)
+		R_trunk_inv = np.linalg.inv(R_trunk)
+		# trunk state 
+		vel_trunk = body_trunk.world_com_velocity()
+		state_skel.append(np.dot(R_trunk_inv,vel_trunk))
+		# other bodies state
+		bodies = []
+		# bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
+		# bodies = ['left_arm', 'right_arm']
+		for name in bodies:
+			body = self.skel.body(name)
+			l = body.world_com() - p_trunk
+			v = body.world_com_velocity()
+			state_skel.append(np.dot(R_trunk_inv,l))
+			state_skel.append(np.dot(R_trunk_inv,v))
+		state_skel = np.array(state_skel).flatten()
+        #
+		# State of sensor
+		#
+		state_sensor = np.dot(R_trunk_inv,self.get_target_pos()-p_trunk)
+		return np.hstack([state_skel,state_sensor])
+	def step_forward(self, apply_controller=True, apply_aero=True):
+		self.world.step(apply_controller,apply_aero)
+		return self.goodness()
+	def step_forward_time(self, delta=1.0/10.0):
+		elpased = 0.0
+		while elpased < delta:
+			self.world.step(True,True)
+			elpased += dt
+		return self.goodness()
+	def step_forward_wingbeat(self, num_wingbeat=1):
+		cnt_wingbeat = 0
+		while cnt_wingbeat < num_wingbeat:
+			self.world.step(True,True)
+			if self.skel.controller.is_new_wingbeat():
+				cnt_wingbeat += 1
+		return self.goodness()
+	def render(self):
+		if self.world is not None:
+			self.world.render()
+		glColor3d(1.0, 0.0, 0.0)
+		p = self.get_target_pos()
+		glPushMatrix()
+		glTranslated(p[0],p[1],p[2])
+		glutSolidSphere(0.25, 10, 10)
+		glPopMatrix()
 
-class NNToy(nn.NNBase):
+class NN(nn.NNBase):
 	def __init__(self, name):
 		nn.NNBase.__init__(self, name)
 		self.dropout_keep_prob = 1.0
@@ -268,79 +257,72 @@ class NNToy(nn.NNBase):
 	def save_variables(self):
 		self.var.save(self.sess)
 
-class DeepRLToy(deepRL.DeepRLBase):
+class DeepRL(deepRL.DeepRLBase):
 	def __init__(self, envi, nn, warmup_file=None):
 		deepRL.DeepRLBase.__init__(self, warmup_file)
 		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
 		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
 		self.envi = envi
 		self.nn = nn
-		self.warmup_size = 200000
-		self.max_data_gen = 20000000
+		self.warmup_size = 10
+		self.max_data_gen = 2000000
 		self.sample_size = 32
-		
-		cnt = 0
-		while True:
-			self.init_step()
-			buffer_name, datum = self.step(full_random=True)
-			if datum is None:
+		if warmup_file is None:
+			print '[DeepRL]', 'generating warmup data ...'
+			cnt = 0
+			while True:
 				self.init_step()
-			else:
-				self.replay_buffer['actor'].append([datum])
-				# self.replay_buffer['critic'].append([datum])
-				cnt += 1
-			if cnt >= self.warmup_size:
-				break
-			if cnt%1000 == 0:
-				print cnt, ' data were generated'
-
+				buffer_name, datum = self.step(full_random=True)
+				if datum is None:
+					self.init_step()
+				else:
+					self.replay_buffer['actor'].append([datum])
+					cnt += 1
+				if cnt >= self.warmup_size:
+					break
+				if cnt%1000 == 0:
+					print cnt, ' data were generated'
+		else:
+			print '[DeepRL]', 'loading warmup file ...'
+			data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
+			self.replay_buffer['actor'].append(data,verbose=True)
+			self.warmup_size = self.replay_buffer['actor'].size_accum
+		self.envi.set_random_state()
 		self.save_variables()
-		
-		# # Train greedy policy
-		# sample_idx = self.replay_buffer['actor'].sample_idx(5000)
-		# data = self.sample('actor', sample_idx)
-		# s = data[0]
-		# a = data[1]
-		# r = data[2]
-		# t_s = []
-		# t_a = []
-		# for i in range(len(s)):
-		# 	if r[i] > 1.0e-2:
-		# 		t_s.append(s[i])
-		# 		t_a.append(a[i])
-		# print 'Data:', len(t_s)
-		# if t_s:
-		# 	print 'Init:', self.nn.loss_action([t_s,t_a])
-		# 	for i in range(100000):
-		# 		self.nn.train_action([t_s,t_a])
-		# 		if i%100==0:
-		# 			print self.nn.loss_action([t_s,t_a])
-
-		# # Train random policy
-		# print '--------- Train random policy ---------'
-		# print 'Init Loss:', self.loss_action(buffer_name='actor')
-		# num_train_data = 100*self.warmup_size
-		# cnt = 0
-		# while True:
-		# 	for i in range(20):
-		# 		self.train_action(100,check_qvalue=False)
-		# 	cnt += 1
-		# 	if cnt%1 == 0:
-		# 		print cnt, ' data were trainned', self.loss_action(buffer_name='actor')
-		# 	if cnt>=num_train_data:
-		# 		break
-		# print '---------------------------------------'
-		# sample_idx = self.replay_buffer['actor'].sample_idx(100)
-		# data = self.sample('actor', sample_idx)
-		# s = data[0]
-		# a = data[1]
-		# print 'Init Loss:', self.nn.loss_action([s,a]), a[0], self.nn.eval_action([s])[0]
-		# for i in range(10000):
-		# 	self.nn.train_action([s,a])
-		# 	# if i%100==0:
-		# 	print i, np.array([self.nn.loss_action([s,a])]), a[0], self.nn.eval_action([s])[0]
 	def convert_warmup_file_to_buffer_data(self, file_name):
-		return
+		f = open(file_name, 'r')
+		data = pickle.load(f)
+		size = len(data)
+		action_default = self.envi.world.skel.controller.get_action_default()
+		tuples = []
+		cnt = 0
+		for d in data:
+			q_skel_init = d[0]
+			q_skel_term = d[1]
+			action = d[2]
+
+			self.envi.set_random_state()
+
+			self.envi.world.skel.set_positions(q_skel_init)
+			reward_init = self.envi.step_forward(False,False)
+			state_init = self.envi.state()
+
+			self.envi.world.skel.set_positions(q_skel_term)
+			reward_term = self.envi.step_forward(False,False)
+			state_term = self.envi.state()
+
+			reward = reward_term
+
+			action_extra = ac.sub(action,action_default)
+			action_extra_flat = np.array(basics.flatten(action_extra))
+
+			t = [state_init, action_extra_flat, [reward], state_term]
+			if basics.check_valid_data(t):
+				tuples.append(t)
+				cnt += 1
+				if cnt%5000 == 0:
+					print cnt, ' data were loaded'
+		return tuples
 	def init_step(self):
 		self.envi.set_random_state()
 	def step(self, full_random=False, force_buffer_name=None):
@@ -349,24 +331,25 @@ class DeepRLToy(deepRL.DeepRLBase):
 
 		state_init = self.envi.state()
 		action = self.get_action(state_init)
+		action_default = np.array(ac.flat(self.envi.world.skel.controller.get_action_default()))
 		if full_random:
-			mu = 0.5*(self.envi.vel_limit[0]+self.envi.vel_limit[1])
-			sigma = 0.25*(self.envi.vel_limit[1]-self.envi.vel_limit[0])
-			action = vel_random(mu,sigma)
+			mu = np.zeros(ac.length())
+			sigma = 0.2*np.ones(ac.length())
+			action = np.random.normal(mu, sigma)
 			buffer_name = 'actor'
 		elif is_exploration:
-			mu = np.zeros(len(self.envi.vel_limit[0]))
-			sigma = 0.1*(self.envi.vel_limit[1]-self.envi.vel_limit[0])
-			action += vel_random(mu,sigma)
+			mu = np.zeros(ac.length())
+			sigma = 0.1*np.ones(ac.length())
+			action += np.random.normal(mu, sigma)
 			buffer_name = 'actor'
-		reward = self.envi.step_forward(dt,action)
+		action = action + action_default
+		reward = self.envi.step_forward_wingbeat()
 		state_term = self.envi.state()
 		t = [state_init, action, [reward], state_term]
 		# print state_init, action, reward
 		if force_buffer_name is not None:
 			buffer_name = force_buffer_name
-		if basics.check_valid_data(t) and \
-			not self.envi.check_collision(self.envi.detective.pos):
+		if basics.check_valid_data(t):
 			return buffer_name, t
 		else:
 			return buffer_name, None
@@ -428,7 +411,6 @@ class DeepRLToy(deepRL.DeepRLBase):
 					self.nn.train_action([data_state,data_action])
 					if verbose:
 						print self.nn.loss_action([data_state,data_action])
-				
 	def train(self):
 		self.train_qvalue(self.sample_size)
 		self.train_action(self.sample_size)
@@ -465,23 +447,25 @@ class DeepRLToy(deepRL.DeepRLBase):
 	def save_variables(self):
 		self.nn.save_variables()
 
-dt = 0.5
-myEnvi = Envi()
-myNN = NNToy('net')
-myNN.initialize([len(myEnvi.state()),2])
-# myNN.initialize([len(myEnvi.state()),2],ckpt_dir)
-myDeepRL = DeepRLToy(myEnvi, myNN)
+dt = 1.0/600.0
+myEnvi = Envi(dt, skel_file)
+myNN = NN('net_turtle')
+myNN.initialize([len(myEnvi.state()),ac.length()])
+# # myNN.initialize([len(myEnvi.state()),2],ckpt_dir)
+myDeepRL = DeepRL(myEnvi, myNN, warmup_file)
 
 def step_callback():
 	return
 
 def render_callback():
-	global cnt_target_update
-	gl_render.render_ground(color=[1.0,1.0,1.0],axis='z')
-	myEnvi.detective.render(color=[0,0,1])
-	myEnvi.criminal.render(color=[1,0,0])
+	gl_render.render_ground(color=[1.0,1.0,1.0],axis='y')
+	myEnvi.render()
+	# gl_render.render_ground(color=[1.0,1.0,1.0],axis='z')
+	# myEnvi.detective.render(color=[0,0,1])
+	# myEnvi.criminal.render(color=[1,0,0])
 	if flag['Train']:
-		myDeepRL.run(100, 25)
+		global cnt_target_update
+		myDeepRL.run(50, 20)
 		if cnt_target_update>=max_target_update:
 			myDeepRL.save_variables()
 			cnt_target_update = 0
@@ -491,18 +475,24 @@ def render_callback():
 def keyboard_callback(key):
 	if key == 'r':
 		myEnvi.set_random_state()
+	elif key == 'p':
+		myEnvi.step_forward_time()
 	elif key == 't':
-		myEnvi.step_forward(dt, vel_random())
+		print myEnvi.state()
 	elif key == ' ':
-		state = myEnvi.state()
-		action = myDeepRL.get_action(state)
-		qvalue = myDeepRL.get_qvalue(state)
-		reward = myEnvi.step_forward(dt, action)
-		print 'S:', state, 'A:', action, 'R:', reward, 'Q:', qvalue
-		if myEnvi.check_collision(myEnvi.detective.pos):
-			for i in range(20):
-				print 'COLLISION',
-			print ' '
+		elpased = 0.0
+		while True:
+			myEnvi.step_forward()
+			if myEnvi.skel.controller.is_new_wingbeat():
+				state = myEnvi.state()
+				action = myDeepRL.get_action(state)
+				qvalue = myDeepRL.get_qvalue(state)
+				reward = myEnvi.goodness()
+				print 'S:', state, 'A:', action, 'R:', reward, 'Q:', qvalue
+				myEnvi.skel.controller.add_action(action, True)
+			elpased += dt
+			if elpased >= 0.1:
+				break
 	elif key == 'd':
 		flag['Train'] = not flag['Train']
 	elif key == 's':
@@ -512,7 +502,7 @@ def keyboard_callback(key):
 		data = myDeepRL.sample('critic', sample_idx)
 		print data
 
-pydart.glutgui.glutgui_base.run(title='example_toy',
+pydart.glutgui.glutgui_base.run(title='example_turtle',
 						trans=[0, 0, -30],
 						keyboard_callback=keyboard_callback,
 						render_callback=render_callback)
