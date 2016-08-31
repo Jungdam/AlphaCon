@@ -46,6 +46,8 @@ class Controller:
             self.action.append(ac.add(self.action_default,action))
         else:
             self.action.append(action)
+        if self.action[-1][2] <= 0.0:
+            raise Exception('[Action]', 'negative time length')
     def set_action(self, action):
         self.action = action
     def set_action_all(self, action):

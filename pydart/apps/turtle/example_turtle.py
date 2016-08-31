@@ -91,12 +91,13 @@ class Envi:
 			self.world.step(True,True)
 			elpased += dt
 		return self.goodness()
-	def step_forward_wingbeat(self, num_wingbeat=1):
-		cnt_wingbeat = 0
-		while cnt_wingbeat < num_wingbeat:
+	def step_forward_wingbeat(self, wingbeat=None):
+		if wingbeat is not None:
+			self.skel.controller.add_action(ac.format(wingbeat),True)
+		while True:
 			self.world.step(True,True)
 			if self.skel.controller.is_new_wingbeat():
-				cnt_wingbeat += 1
+				break
 		return self.goodness()
 	def render(self):
 		if self.world is not None:
@@ -331,7 +332,6 @@ class DeepRL(deepRL.DeepRLBase):
 
 		state_init = self.envi.state()
 		action = self.get_action(state_init)
-		action_default = np.array(ac.flat(self.envi.world.skel.controller.get_action_default()))
 		if full_random:
 			mu = np.zeros(ac.length())
 			sigma = 0.2*np.ones(ac.length())
@@ -342,9 +342,9 @@ class DeepRL(deepRL.DeepRLBase):
 			sigma = 0.1*np.ones(ac.length())
 			action += np.random.normal(mu, sigma)
 			buffer_name = 'actor'
-		action = action + action_default
-		reward = self.envi.step_forward_wingbeat()
+		reward = self.envi.step_forward_wingbeat(action)
 		state_term = self.envi.state()
+
 		t = [state_init, action, [reward], state_term]
 		# print state_init, action, reward
 		if force_buffer_name is not None:
@@ -453,6 +453,7 @@ myNN = NN('net_turtle')
 myNN.initialize([len(myEnvi.state()),ac.length()])
 # # myNN.initialize([len(myEnvi.state()),2],ckpt_dir)
 myDeepRL = DeepRL(myEnvi, myNN, warmup_file)
+# myDeepRL = DeepRL(myEnvi, myNN)
 
 def step_callback():
 	return
@@ -482,7 +483,6 @@ def keyboard_callback(key):
 	elif key == ' ':
 		elpased = 0.0
 		while True:
-			myEnvi.step_forward()
 			if myEnvi.skel.controller.is_new_wingbeat():
 				state = myEnvi.state()
 				action = myDeepRL.get_action(state)
@@ -490,6 +490,7 @@ def keyboard_callback(key):
 				reward = myEnvi.goodness()
 				print 'S:', state, 'A:', action, 'R:', reward, 'Q:', qvalue
 				myEnvi.skel.controller.add_action(action, True)
+			myEnvi.step_forward()
 			elpased += dt
 			if elpased >= 0.1:
 				break

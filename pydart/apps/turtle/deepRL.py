@@ -110,7 +110,6 @@ class DeepRLBase:
 					self.replay_buffer[buffer_name].append([datum])
 				# print i, j, buffer_name
 			is_warming_up_end = self.is_warming_up()
-
 			# # Save warming up data if necessary
 			# if is_warming_up_start != is_warming_up_end:
 			# 	self.save_replay_buffer('__warming_up_db.txt')
@@ -122,7 +121,6 @@ class DeepRLBase:
 			# 			cnt += self.sample_size
 			# 			if cnt>=2*self.buffer_size:
 			# 				break
-
 			# Train network
 			if not self.is_warming_up():
 				self.train()
