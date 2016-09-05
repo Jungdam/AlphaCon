@@ -13,6 +13,9 @@ import tensorflow as tf
 import mmMath
 import action as ac
 import pickle
+import profile
+import multiprocessing
+from multiprocessing import Process, Queue
 
 np.set_printoptions(precision=3)
 flag = {}
@@ -22,19 +25,92 @@ max_target_update = 20
 log_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/log'
 ckpt_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
-warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.15_10000_8.warmup'
+warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.1_4000_20.warmup'
 
 pydart.init()
 print('pydart initialization OK')
+
+profile = profile.Profile()
+lock = multiprocessing.Lock()
+mgr = multiprocessing.Manager()
+
+def gen_warmup_data_one_process(q, idx, envi, mu, sigma, num_episode, num_wingbeat):
+	data = []
+	for ep in xrange(num_episode):
+		envi.set_random_state()
+		for i in xrange(num_wingbeat):
+			action = ac.random(mu,sigma)
+			q_skel_init = envi.skel.q
+			envi.skel.controller.add_action(action)
+			envi.step_forward_wingbeat()
+			q_skel_term = envi.skel.q
+			data.append([q_skel_init, q_skel_term, action])
+			if len(data)%100 == 0:
+				print '[', idx, ']', len(data), 'data generated'
+	q.put(data)
+
+def gen_warmup_data(mu, sigma, num_episode=2500, num_wingbeat=20):
+	num_cores = multiprocessing.cpu_count()
+	# myEnvis = []
+	# for i in range(num_cores):
+	# 	myEnvis.append(Envi(dt, skel_file))
+
+	data = []
+	ps = []
+	q = Queue()
+	for i in xrange(num_cores):
+		envi = Envi(dt, skel_file)
+		p = Process(
+			target=gen_warmup_data_one_process, 
+			args=(q, i, envi, mu, sigma, num_episode/num_cores, num_wingbeat))
+		p.start()
+		ps.append(p)
+	for i in xrange(num_cores):
+		data = data + q.get()
+	for i in xrange(num_cores):
+		ps[i].join()
+	for i in xrange(num_cores):
+		ps[i].terminate()
+
+	print len(data)
+	print data
+	
+	# profile.begin()
+	# for ep in xrange(num_episode):
+	# 	myEnvi.set_random_state()
+	# 	for i in xrange(num_wingbeat):
+	# 		action = ac.random(mu,sigma)
+	# 		q_skel_init = myEnvi.skel.q
+	# 		myEnvi.skel.controller.add_action(action)
+	# 		myEnvi.step_forward_wingbeat()
+	# 		q_skel_term = myEnvi.skel.q
+	# 		data.append([q_skel_init, q_skel_term, action])
+	# 		if len(data)%500 == 0:
+	# 			print len(data), '/', num_episode*num_wingbeat, 'data generated'
+	# 			profile.print_time()
+	# 			profile.begin()
+	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'.warmup', 'w')
+	pickle.dump(data, f)
+	f.close()
+
+	return data
+
+class Target:
+	def __init__(self, mu=np.array([0,1.0,7.0]), sigma=np.array([1.0,1.0,2.0])):
+		self.mu = mu
+		self.sigma = sigma
+		self.pos = np.random.normal(self.mu,self.sigma)
+	def reset(self):
+		self.pos = np.random.normal(self.mu,self.sigma)
+	def get_pos(self):
+		return self.pos
 
 class Envi:
 	def __init__(self, dt, skel_file, num_init_wingbeat=2):
 		self.world = pydart.create_world(dt, skel_file)
 		self.skel = self.world.skels[0]
 		self.skel.controller = controller.Controller(self.world, self.skel)
-		self.target_mu = np.array([0,1.0,7.0])
-		self.target_sigma = np.array([1.0,1.0,2.0])
-		self.target = np.random.normal(self.target_mu,self.target_sigma)
+		self.target = Target()
 		while True:
 		    if self.skel.controller.get_num_wingbeat() >= num_init_wingbeat:
 		        self.world.push()
@@ -42,16 +118,14 @@ class Envi:
 		        self.set_random_state()
 		        break;
 		    self.world.step()
-	def get_target_pos(self):
-		return self.target
 	def set_random_state(self):
 		self.world.reset()
 		self.skel.controller.reset()
-		self.target = np.random.normal(self.target_mu,self.target_sigma)
+		self.target.reset()
 		return
 	def goodness(self):
 		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
-		diff = p-self.target
+		diff = p-self.target.get_pos()
 		l = np.linalg.norm(diff)
 		return math.exp(-0.5*l*l)
 	def state(self):
@@ -80,7 +154,7 @@ class Envi:
         #
 		# State of sensor
 		#
-		state_sensor = np.dot(R_trunk_inv,self.get_target_pos()-p_trunk)
+		state_sensor = np.dot(R_trunk_inv,self.target.get_pos()-p_trunk)
 		return np.hstack([state_skel,state_sensor])
 	def step_forward(self, apply_controller=True, apply_aero=True):
 		self.world.step(apply_controller,apply_aero)
@@ -93,7 +167,7 @@ class Envi:
 		return self.goodness()
 	def step_forward_wingbeat(self, wingbeat=None):
 		if wingbeat is not None:
-			self.skel.controller.add_action(ac.format(wingbeat),True)
+			self.skel.controller.add_action(wingbeat,True)
 		while True:
 			self.world.step(True,True)
 			if self.skel.controller.is_new_wingbeat():
@@ -101,13 +175,100 @@ class Envi:
 		return self.goodness()
 	def render(self):
 		if self.world is not None:
+			glEnable(GL_LIGHTING)
+			# glPolygonMode( GL_FRONT_AND_BACK, GL_LINE )
 			self.world.render()
+			glDisable(GL_LIGHTING)
 		glColor3d(1.0, 0.0, 0.0)
-		p = self.get_target_pos()
+		p = self.target.get_pos()
 		glPushMatrix()
 		glTranslated(p[0],p[1],p[2])
 		glutSolidSphere(0.25, 10, 10)
 		glPopMatrix()
+
+def step_forward_wingbeat_unit(q, envi, wingbeat):
+	# print proc_name, result, 'start'
+	# proc_name = multiprocessing.current_process().name
+	result = envi.step_forward_wingbeat(wingbeat)
+	q.put(result)
+	# print proc_name, result, 'end'
+
+class Envi_Multicore:
+	def __init__(self, num_envis, dt, skel_file, num_init_wingbeat=2):
+		self.envis = []
+		self.num_envis = num_envis
+		for i in range(num_envis):
+			self.envis.append(Envi(dt, skel_file, num_init_wingbeat))
+		self.num_cores = multiprocessing.cpu_count()
+		self.pool = multiprocessing.Pool(self.num_cores)
+	def set_random_state(self):
+		for envi in self.envis:
+			envi.set_random_state()
+	def goodness(self):
+		data = []
+		for envi in self.envis:
+			data.append(envi.goodness())
+		return data
+	def state(self):
+		data = []
+		for envi in self.envis:
+			data.append(envi.state())
+		return data
+	# def step_forward_unit(self, envi, apply_controller=True, apply_aero=True):
+	# 	return envi.step_forward(apply_controller, apply_aero)
+	# def step_forward(self, apply_controller=True, apply_aero=True):
+	# 	results = [self.pool.apply_async( \
+	# 		self.step_forward_unit, (self.envis[i], apply_controller,apply_aero))\
+	# 		for i in range(self.num_envis)]
+	# 	print [res.get() for res in results]
+	# def step_forward_time(self, delta_list):
+	# 	data = []
+	# 	for i in range(len(self.envis)):
+	# 		data.append(self.envi[i].step_forward_time(delta_list[i]))
+	# 	return data
+	
+	def step_forward_wingbeat(self, wingbeats):
+		rewards = []
+		ps = []
+		q = Queue()
+		for i in xrange(len(wingbeats)):
+			envi = self.envis[i]
+			wingbeat = wingbeats[i]
+			p = Process(
+				target=step_forward_wingbeat_unit, 
+				args=(q, envi, wingbeat))
+			p.start()
+			ps.append(p)
+		for i in xrange(len(ps)):
+		 	ps[i].join()
+		for i in xrange(len(ps)):
+			rewards.append(q.get())
+		for i in xrange(len(ps)):
+		 	ps[i].terminate()
+
+		# q = Queue()
+		# results = [self.pool.apply_async( \
+		# 	step_forward_wingbeat_unit, (self.envis[i], wingbeats[i], q))\
+		# 	for i in range(self.num_envis)]
+		# rewards = [q.get() for i in range(self.num_envis)]
+		# print rewards
+		return rewards
+
+		# # rewards = [res.get() for res in results]
+		# print rewards
+		# return rewards
+
+		# data = []
+		# for i in range(len(self.envis)):
+		# 	data.append(self.envi[i].step_forward_wingbeat(wingbeat_list[i]))
+		# return data
+	def render(self):
+		for envi in self.envis:
+			envi.render()
+	def get(self, idx):
+		return self.envis[i]
+	def reset(self, idx):
+		return self.envi[idx].set_random_state()
 
 class NN(nn.NNBase):
 	def __init__(self, name):
@@ -258,6 +419,245 @@ class NN(nn.NNBase):
 	def save_variables(self):
 		self.var.save(self.sess)
 
+class DeepRL_Multicore(deepRL.DeepRLBase):
+	def __init__(self, envi, nn, warmup_file=None):
+		deepRL.DeepRLBase.__init__(self, warmup_file)
+		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
+		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
+		self.envi = envi
+		self.nn = nn
+		self.warmup_size = 0
+		self.max_data_gen = 2000000
+		self.sample_size = 32
+		if warmup_file is None:
+			print '[DeepRL]', 'generating warmup data ...'
+			# cnt = 0
+			# while True:
+			# 	self.init_step()
+			# 	buffer_name, datum = self.step(full_random=True)
+			# 	if datum is None:
+			# 		self.init_step()
+			# 	else:
+			# 		self.replay_buffer['actor'].append([datum])
+			# 		cnt += 1
+			# 	if cnt >= self.warmup_size:
+			# 		break
+			# 	if cnt%1000 == 0:
+			# 		print cnt, ' data were generated'
+			# raw_data = gen_warmup_data(ac.default, [0.1]*ac.dim(), 4000, 20)
+			# data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
+			# self.replay_buffer['actor'].append(data,verbose=True)
+			# self.warmup_size = self.replay_buffer['actor'].size_accum
+		else:
+			print '[DeepRL]', 'loading warmup file ...'
+			data = self.convert_warmup_file_to_buffer_data(self.envi.get(0), self.warmup_file)
+			self.replay_buffer['actor'].append(data,verbose=True)
+			self.warmup_size = self.replay_buffer['actor'].size_accum
+		self.save_variables()
+	def convert_warmup_file_to_buffer_data(self, envi, file_name):
+		f = open(file_name, 'r')
+		data = pickle.load(f)
+		size = len(data)
+		tuples = []
+		cnt = 0
+		for d in data:
+			q_skel_init = d[0]
+			q_skel_term = d[1]
+			action = d[2]
+
+			envi.set_random_state()
+
+			envi.world.skel.set_positions(q_skel_init)
+			reward_init = envi.step_forward(False,False)
+			state_init = envi.state()
+
+			envi.world.skel.set_positions(q_skel_term)
+			reward_term = envi.step_forward(False,False)
+			state_term = envi.state()
+
+			reward = reward_term
+			action_delta = np.array(basics.flatten(action)) - ac.default
+
+			t = [state_init, action_delta, [reward], state_term]
+			if basics.check_valid_data(t):
+				tuples.append(t)
+				cnt += 1
+				if cnt%5000 == 0:
+					print cnt, ' data were loaded'
+		return tuples
+	# def run_atomic(self, q, idx, envi, num_ep, num_iter):
+	# 	proc_name = multiprocessing.current_process().name
+	# 	print proc_name
+	# 	data = []
+	# 	for i in xrange(num_ep):
+	# 		self.init_step(envi)
+	# 		print proc_name, 'a0'
+	# 		buffer_name, datum = self.step(envi, self.is_warming_up())
+	# 		print proc_name, 'a1'
+	# 		if datum is None:
+	# 			self.init_step()
+	# 		else:
+	# 			data.append([buffer_name, datum])
+	# 	q.put(data)
+	def run(self, max_iter=32, verbose=True):
+		if self.is_finished_trainning():
+			return
+		self.init_step()
+		for i in xrange(max_iter):
+			buffer_names, data = self.step(self.is_warming_up())
+			for j in xrange(len(data)):
+				if data[j] is None:
+					self.envi.reset(j)
+				else:
+					self.replay_buffer[buffer_names[j]].append([data[j]])
+			if not self.is_warming_up():
+				self.train()
+			# Print statistics
+			if verbose:
+				print '[ ', i, 'th episode ]', ' warmup: ', self.is_warming_up(), 
+				for buffer_name in self.replay_buffer.keys():
+					print '[', buffer_name,
+					print self.replay_buffer[buffer_name].size,
+					print self.replay_buffer[buffer_name].size_accum, ']',
+				if not self.is_warming_up():
+					self.print_loss()
+				else:
+					print ' '
+	def init_step(self):
+		self.envi.set_random_state()
+	def step(self, full_random=False):
+		# proc_name = multiprocessing.current_process().name
+		# print 'get_action0: %s' % (proc_name)
+		
+		state_inits = self.envi.state()
+		actions = self.get_actions(state_inits)
+
+		# print actions
+
+		buffer_names = []
+		for i in range(len(actions)):
+			buffer_name = 'critic'
+			is_exploration = self.determine_exploration()
+			if full_random:
+				mu = np.zeros(ac.length())
+				sigma = 0.1*np.ones(ac.length())
+				actions[i] = np.random.normal(mu, sigma)
+				buffer_name = 'actor'
+			elif is_exploration:
+				mu = np.zeros(ac.length())
+				sigma = 0.05*np.ones(ac.length())
+				actions[i] += np.random.normal(mu, sigma)
+				buffer_name = 'actor'
+			buffer_names.append(buffer_name)		
+		rewards = self.envi.step_forward_wingbeat(actions)
+		state_terms = self.envi.state()
+		
+		tuples = []
+		for i in range(len(state_inits)):
+			t = [state_inits[i], actions[i], [rewards[i]], state_terms[i]]
+			if basics.check_valid_data(t):
+				tuples.append(t)
+			else:
+				tuples.append(None)
+		
+		return buffer_names, tuples
+	def sample(self, buffer_name, idx):
+		if not idx:
+			return []
+		data_state = []
+		data_action = []
+		data_reward = []
+		data_state_prime = []
+		for i in idx:
+			datum = self.replay_buffer[buffer_name].data[i]
+			data_state.append(datum[0])
+			data_action.append(datum[1])
+			data_reward.append(datum[2])
+			data_state_prime.append(datum[3])
+		return [ \
+			np.array(data_state),\
+			np.array(data_action),\
+			np.array(data_reward),\
+			np.array(data_state_prime)]
+	def compute_target_qvalue(self, reward, state_prime):
+		qvalue_prime = self.nn.eval_qvalue([state_prime], True)
+		target_qvalue = reward + self.discount_factor*qvalue_prime
+		return target_qvalue
+	def train_qvalue(self, sample_size, iteration=10, verbose=False):
+		sample_idx = self.replay_buffer['critic'].sample_idx(sample_size)
+		data = self.sample('critic', sample_idx)
+		if data:
+			data_state = data[0]
+			data_reward = data[2]
+			data_state_prime = data[3]
+			target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
+			for i in range(iteration):
+				self.nn.train_qvalue([data_state,target_qvalue])
+				if verbose:
+					print self.nn.loss_qvalue([data_state,target_qvalue])
+	def train_action(self, sample_size, check_qvalue=True, iteration=10, verbose=False):
+		sample_idx = self.replay_buffer['actor'].sample_idx(sample_size)
+		data = self.sample('actor', sample_idx)
+		if data:
+			data_state = data[0]
+			data_action = data[1]
+			data_reward = data[2]
+			data_state_prime = data[3]
+			if check_qvalue:
+				train_state = []
+				train_action = []
+				qvalue = self.nn.eval_qvalue([data_state], True)
+				target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
+				for i in xrange(len(qvalue)):
+					if target_qvalue[i][0] > qvalue[i][0]:
+						train_state.append(data_state[i])
+						train_action.append(data_action[i])
+				data_state = train_state
+				data_action = train_action
+			if data_state:
+				for i in range(iteration):
+					self.nn.train_action([data_state,data_action])
+					if verbose:
+						print self.nn.loss_action([data_state,data_action])
+	def train(self):
+		self.train_qvalue(self.sample_size)
+		self.train_action(self.sample_size)
+	def get_action(self, state):
+		val = self.nn.eval_action([[state]], True)
+		return val[0]
+	def get_actions(self, states):
+		val = self.nn.eval_action([states], True)
+		return val
+	def get_qvalue(self, state):
+		val = self.nn.eval_qvalue([[state]], True)
+		return val[0][0]
+	def loss_qvalue(self, sample_size=100, buffer_name='critic'):
+		sample_idx = self.replay_buffer[buffer_name].sample_idx(sample_size)
+		data = self.sample(buffer_name, sample_idx)
+		q = 0.0
+		if data:
+			data_state = data[0]
+			data_reward = data[2]
+			data_state_prime = data[3]
+			target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
+			q = self.nn.loss_qvalue([data_state,target_qvalue])
+		return q
+	def loss_action(self, sample_size=100, buffer_name='critic'):
+		sample_idx = self.replay_buffer[buffer_name].sample_idx(sample_size)
+		data = self.sample(buffer_name, sample_idx)
+		if data:
+			data_state = data[0]
+			data_action = data[1]
+			return self.nn.loss_action([data_state, data_action])
+		else:
+			return 0.0
+	def print_loss(self, sample_size=100):
+		q = self.loss_qvalue(sample_size)
+		a = self.loss_action(sample_size)
+		print 'Loss values: ', 'qvalue:', q, 'action:', a
+	def save_variables(self):
+		self.nn.save_variables()
+
 class DeepRL(deepRL.DeepRLBase):
 	def __init__(self, envi, nn, warmup_file=None):
 		deepRL.DeepRLBase.__init__(self, warmup_file)
@@ -265,24 +665,28 @@ class DeepRL(deepRL.DeepRLBase):
 		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
 		self.envi = envi
 		self.nn = nn
-		self.warmup_size = 10
+		self.warmup_size = 0
 		self.max_data_gen = 2000000
 		self.sample_size = 32
 		if warmup_file is None:
 			print '[DeepRL]', 'generating warmup data ...'
-			cnt = 0
-			while True:
-				self.init_step()
-				buffer_name, datum = self.step(full_random=True)
-				if datum is None:
-					self.init_step()
-				else:
-					self.replay_buffer['actor'].append([datum])
-					cnt += 1
-				if cnt >= self.warmup_size:
-					break
-				if cnt%1000 == 0:
-					print cnt, ' data were generated'
+			# cnt = 0
+			# while True:
+			# 	self.init_step()
+			# 	buffer_name, datum = self.step(full_random=True)
+			# 	if datum is None:
+			# 		self.init_step()
+			# 	else:
+			# 		self.replay_buffer['actor'].append([datum])
+			# 		cnt += 1
+			# 	if cnt >= self.warmup_size:
+			# 		break
+			# 	if cnt%1000 == 0:
+			# 		print cnt, ' data were generated'
+			# raw_data = gen_warmup_data(ac.default, [0.1]*ac.dim(), 4000, 20)
+			# data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
+			# self.replay_buffer['actor'].append(data,verbose=True)
+			# self.warmup_size = self.replay_buffer['actor'].size_accum
 		else:
 			print '[DeepRL]', 'loading warmup file ...'
 			data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
@@ -294,7 +698,6 @@ class DeepRL(deepRL.DeepRLBase):
 		f = open(file_name, 'r')
 		data = pickle.load(f)
 		size = len(data)
-		action_default = self.envi.world.skel.controller.get_action_default()
 		tuples = []
 		cnt = 0
 		for d in data:
@@ -313,11 +716,9 @@ class DeepRL(deepRL.DeepRLBase):
 			state_term = self.envi.state()
 
 			reward = reward_term
+			action_delta = np.array(basics.flatten(action)) - ac.default
 
-			action_extra = ac.sub(action,action_default)
-			action_extra_flat = np.array(basics.flatten(action_extra))
-
-			t = [state_init, action_extra_flat, [reward], state_term]
+			t = [state_init, action_delta, [reward], state_term]
 			if basics.check_valid_data(t):
 				tuples.append(t)
 				cnt += 1
@@ -334,12 +735,12 @@ class DeepRL(deepRL.DeepRLBase):
 		action = self.get_action(state_init)
 		if full_random:
 			mu = np.zeros(ac.length())
-			sigma = 0.2*np.ones(ac.length())
+			sigma = 0.1*np.ones(ac.length())
 			action = np.random.normal(mu, sigma)
 			buffer_name = 'actor'
 		elif is_exploration:
 			mu = np.zeros(ac.length())
-			sigma = 0.1*np.ones(ac.length())
+			sigma = 0.05*np.ones(ac.length())
 			action += np.random.normal(mu, sigma)
 			buffer_name = 'actor'
 		reward = self.envi.step_forward_wingbeat(action)
@@ -450,10 +851,14 @@ class DeepRL(deepRL.DeepRLBase):
 dt = 1.0/600.0
 myEnvi = Envi(dt, skel_file)
 myNN = NN('net_turtle')
-myNN.initialize([len(myEnvi.state()),ac.length()])
+myNN.initialize([len(myEnvi.state()),len(ac.default)])
 # # myNN.initialize([len(myEnvi.state()),2],ckpt_dir)
-myDeepRL = DeepRL(myEnvi, myNN, warmup_file)
-# myDeepRL = DeepRL(myEnvi, myNN)
+# myDeepRL = DeepRL(myEnvi, myNN, warmup_file)
+# envis = []
+# for i in range(multiprocessing.cpu_count()):
+# 	envis.append(Envi(dt, skel_file))
+myEnviMulti = Envi_Multicore(32, dt, skel_file)
+myDeepRL = DeepRL_Multicore(myEnviMulti, myNN)
 
 def step_callback():
 	return
@@ -466,7 +871,7 @@ def render_callback():
 	# myEnvi.criminal.render(color=[1,0,0])
 	if flag['Train']:
 		global cnt_target_update
-		myDeepRL.run(50, 20)
+		myDeepRL.run(20)
 		if cnt_target_update>=max_target_update:
 			myDeepRL.save_variables()
 			cnt_target_update = 0
@@ -477,7 +882,23 @@ def keyboard_callback(key):
 	if key == 'r':
 		myEnvi.set_random_state()
 	elif key == 'p':
-		myEnvi.step_forward_time()
+		elpased = 0.0
+		while True:
+			if myEnvi.skel.controller.is_new_wingbeat():
+				print myEnvi.skel.controller.action[-1]
+			myEnvi.step_forward()
+			elpased += dt
+			if elpased >= 0.1:
+				break
+	elif key == '[':
+		elpased = 0.0
+		while True:
+			if myEnvi.skel.controller.is_new_wingbeat():
+				myEnvi.skel.controller.add_action(ac.random(ac.default,[0.1]*ac.dim()))
+			myEnvi.step_forward()
+			elpased += dt
+			if elpased >= 0.1:
+				break
 	elif key == 't':
 		print myEnvi.state()
 	elif key == ' ':
@@ -496,8 +917,11 @@ def keyboard_callback(key):
 				break
 	elif key == 'd':
 		flag['Train'] = not flag['Train']
+		print 'Train: ', flag['Train']
 	elif key == 's':
 		myNN.save(ckpt_dir)
+	elif key == 'w':
+		gen_warmup_data(ac.default, [0.1]*ac.dim(), 4000, 20)
 	elif key == '0':
 		sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
 		data = myDeepRL.sample('critic', sample_idx)

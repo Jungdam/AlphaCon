@@ -1,49 +1,28 @@
 import numpy as np
+import basics
 
-dim_l = 6
-dim_r = 6
+default = np.array([\
+	-1.25567921, 0.6118376, 0.53513041, 0.28105493, 0.78491477, -0.65140349, \
+	-1.25567921, 0.6118376, -0.53513041, -0.28105493, -0.78491477, 0.65140349, \
+	1.5])
 
-def flatten(l):
-	return list(_flatten_(l))
+dim_left = 6
+dim_right = 6
+dim_others = 1
 
-def _flatten_(*args):
-    for x in args:
-        if hasattr(x, '__iter__'):
-            for y in _flatten_(*x):
-                yield y
-        else:
-            yield x
-
-def add(a, b):
-	return [\
-		(np.array(a[0])+np.array(b[0])).tolist(),
-		(np.array(a[1])+np.array(b[1])).tolist(),
-		a[2]+b[2]]
-def sub(a, b):
-	return [\
-		(np.array(a[0])-np.array(b[0])).tolist(),
-		(np.array(a[1])-np.array(b[1])).tolist(),
-		a[2]-b[2]]
-def random(sigma, default_action=None):
-	d = len(sigma)
-	a = [0.0]*d
-	for i in xrange(d):
-		# a[i] = np.random.uniform(-sigma[i], sigma[i])
-		a[i] = np.random.normal(0.0, sigma[i])
-	r = [a[0:dim_l],a[dim_l:(dim_l+dim_r)],a[dim_l+dim_r]]
-	if default_action is None:
-		return r
-	else:
-		return add(r, default_action)
-def mirror(a,left_given=True):
-	return [a[0],a[1],-a[2],-a[3],-a[4],-a[5]]
-def zero():
-	return [[0.0]*dim_l,[0.0]*dim_r,0.0]
+def get_left(a):
+	return a[0:dim_left]
+def get_right(a):
+	return a[dim_left:dim_left+dim_right]
+def mirror(a):
+	return np.array([a[0],a[1],-a[2],-a[3],-a[4],-a[5]])
+def dim():
+	return dim_left+dim_right+dim_others
 def length():
-	return dim_l+dim_r+1
-def flat(a):
-	return flatten(a)
-def format(a):
-	return [a[0:dim_l],a[dim_l:dim_r+dim_l],a[dim_r+dim_l]]
+	return dim_left+dim_right+dim_others
+def zero():
+	np.zeros(dim())
 def pprint(a):
 	print np.array(a[0]), np.array(a[1]), np.array([a[2]])
+def random(mu, sigma):
+	return np.random.normal(mu, sigma)

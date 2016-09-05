@@ -9,7 +9,7 @@ def weight_variable(name, shape):
 	xavier =tf.contrib.layers.xavier_initializer()
 	return tf.get_variable(name, shape=shape, initializer=xavier)
 def bias_variable(name, shape):
-	initial = tf.truncated_normal(shape, stddev=0.05)
+	initial = tf.truncated_normal(shape, stddev=0.01)
 	return tf.Variable(initial,name=name)
 	# xavier =tf.contrib.layers.xavier_initializer()
 	# return tf.get_variable(name, shape=shape, initializer=xavier)

@@ -220,7 +220,7 @@
                 <parent>world</parent>
                 <child>trunk</child>
                 <init_pos>0 0 0 0 0 0</init_pos>
-                <init_vel>0 0 0 0 0 1</init_vel>
+                <init_vel>0 0 0 0 0 1.0</init_vel>
             </joint>
 
             <!-- JOINT: Left Arm -->

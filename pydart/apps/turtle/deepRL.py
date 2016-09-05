@@ -94,7 +94,7 @@ class DeepRLBase:
 		return self.num_data_gen() < self.warmup_size
 	def is_finished_trainning(self):
 		return self.num_data_gen() >= self.max_data_gen
-	def run(self, max_episode=100, max_iter_per_episode=100, verbose=True):
+	def run(self, max_episode=64, max_iter_per_episode=32, verbose=True):
 		if self.is_finished_trainning():
 			return
 		for i in xrange(max_episode):
