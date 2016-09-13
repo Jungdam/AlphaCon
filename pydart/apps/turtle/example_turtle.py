@@ -138,8 +138,7 @@ class Envi:
 		#
 		state_sensor = np.dot(R_trunk_inv,self.target.get_pos()-p_trunk)
 		# return state_sensor
-		# return np.hstack([state_skel,state_sensor])
-		return p_trunk
+		return np.hstack([state_skel,state_sensor])
 	def step_forward(self, apply_controller=True, apply_aero=True):
 		self.world.step(apply_controller,apply_aero)
 		return self.goodness()
@@ -171,40 +170,29 @@ class Envi:
 		glutSolidSphere(0.25, 10, 10)
 		glPopMatrix()
 
-def step_forward_wingbeat_unit(q, envi, wingbeat):
-	# proc_name = mp.current_process().name
-	# print proc_name, 'start', envi.skel.body('trunk').world_com()
-	result = envi.step_forward_wingbeat(wingbeat)
-	q.put(result)
-	# print proc_name, 'end', envi.skel.body('trunk').world_com()
-
 class Envi_Client(mp.Process):
-	def __init__(self, q_signal, q_wingbeat, q_result, num_init_wingbeat):
+	def __init__(self, idx, q_input, q_result, num_init_wingbeat):
 		super(Envi_Client, self).__init__()
 		self.envi = Envi(dt, skel_file, num_init_wingbeat)
 		self.response_time = 0.001
 		self.reward = 0.0
-		self.q_signal = q_signal
-		self.q_wingbeat = q_wingbeat
+		self.q_input = q_input
 		self.q_result = q_result
+		self.idx = idx
 		self.proc_name = mp.current_process().name
+		print self.proc_name, idx, 'Hello!'
 	def error(self, msg):
-		print self.proc_name, msg
+		print self.proc_name, idx, msg
 	def run(self):
 		while True:
-			if self.q_signal.empty():
+			if self.q_input.empty():
 				time.sleep(self.response_time)
 				continue
-			signal = self.q_signal.get()
+			signal, data = self.q_input.get()
 			if signal == "step":
-				if self.q_wingbeat.empty():
-					self.error("no wingbeat - "+signal)
-					continue
-				state_init = self.envi.state()
-				wingbeat = self.q_wingbeat.get()
+				wingbeat = data
 				self.reward = self.envi.step_forward_wingbeat(wingbeat)
-				state_term = self.envi.state()
-				self.q_result.put([state_init, wingbeat, [self.reward], state_term])
+				self.q_result.put(self.reward)
 			elif signal == "reward":
 				self.q_result.put(self.reward)
 			elif signal == "state":
@@ -219,16 +207,13 @@ class Envi_Client(mp.Process):
 class Envi_Server:
 	def __init__(self, num_client, dt, skel_file, num_init_wingbeat=2):
 		self.num_client = num_client
-		self.q_signals = []
 		self.q_inputs = []
 		self.q_results = []
 		self.clients = []
 		for i in range(num_client):
-			q_signal = mp.Queue()
 			q_input = mp.Queue()
 			q_result = mp.Queue()
-			client = Envi_Client(q_signal, q_input, q_result, num_init_wingbeat)
-			self.q_signals.append(q_signal)
+			client = Envi_Client(i, q_input, q_result, num_init_wingbeat)
 			self.q_inputs.append(q_input)
 			self.q_results.append(q_result)
 			self.clients.append(client)
@@ -242,14 +227,15 @@ class Envi_Server:
 				print "[Envi_Server] error - q is not empty"
 				return False
 		return True
-	def run(self, signals, inputs=None):
+	def run(self, signals, data=None):
 		result = []
 		if not self.check_empty_result():
 			return result
 		for i in range(self.num_client):
-			if inputs is not None:
-				self.q_inputs[i].put(inputs[i])
-			self.q_signals[i].put(signals[i])
+			if data is not None:
+				self.q_inputs[i].put([signals[i],data[i]])
+			else:
+				self.q_inputs[i].put([signals[i],None])
 		for q in self.q_results:
 			while q.empty():
 				continue
@@ -263,67 +249,10 @@ class Envi_Server:
 		return self.run(self.num_client*["step"], wingbeats)
 	def reset(self, idx=None):
 		if idx is not None:
-			self.q_signals[i].put("reset")
+			self.q_inputs[idx].put(["reset",None])
 		else:
-			for q in self.q_signals:
-				q.put("reset")
-
-class Envi_Multicore:
-	def __init__(self, num_envis, dt, skel_file, num_init_wingbeat=2):
-		self.envis = []
-		self.num_envis = num_envis
-		for i in range(num_envis):
-			self.envis.append(Envi(dt, skel_file, num_init_wingbeat))
-		self.num_cores = multiprocessing.cpu_count()
-	def set_random_state(self):
-		for envi in self.envis:
-			envi.set_random_state()
-	def goodness(self):
-		data = []
-		for envi in self.envis:
-			data.append(envi.goodness())
-		return data
-	def state(self):
-		return [envi.state() for envi in self.envis]
-	def step_forward_wingbeat(self, wingbeats, fast=True):
-		rewards = []
-		if fast:
-			ps = []
-			q = mp.Queue()
-			for i in xrange(len(wingbeats)):
-				p = mp.Process(
-					target=step_forward_wingbeat_unit, 
-					args=(q, self.envis[i], wingbeats[i]))
-				p.start()
-				ps.append(p)
-			# for i in xrange(len(ps)):
-			#  	ps[i].join()
-			for i in xrange(len(ps)):
-				rewards.append(q.get())
-			# for i in xrange(len(ps)):
-			#  	ps[i].terminate()
-
-			# threads=[]
-			# q = Queue.Queue()
-			# for i in xrange(len(wingbeats)):
-			# 	t = thread.start_new_thread(
-			# 		step_forward_wingbeat_unit,
-			# 		(q, self.envis[i], wingbeats[i]))
-			# 	threads.append(t)
-			# # for t in threads:
-			# # 	t.join()
-		else:
-			for i in xrange(len(wingbeats)):
-				r = self.envis[i].step_forward_wingbeat(wingbeats[i])
-				rewards.append(r)
-		return rewards
-	def render(self):
-		for envi in self.envis:
-			envi.render()
-	def get(self, idx):
-		return self.envis[idx]
-	def reset(self, idx):
-		self.envis[idx].set_random_state()
+			for q in self.q_inputs:
+				q.put(["reset",None])
 
 class NN(nn.NNBase):
 	def __init__(self, name):
@@ -475,54 +404,6 @@ class NN(nn.NNBase):
 		self.var.save(self.sess)
 
 class DeepRL_Multicore(deepRL.DeepRLBase):
-	
-	class Run_Thread(threading.Thread):
-		def __init__(self, lock, q, envi, rl, max_iter):
-			threading.Thread.__init__(self)
-			self.lock = lock
-			self.q = q
-			self.envi = envi
-			self.rl = rl
-			self.max_iter = max_iter
-		def run(self):
-			self.envi.set_random_state()
-			for i in range(self.max_iter):
-				buffer_name, datum = self.step()
-				if datum is None:
-					self.envi.set_random_state()
-				else:
-					self.lock.acquire()
-					self.q.put([buffer_name, datum])
-					self.lock.release()			
-		def step(self):
-			# print 'a0'
-			state_init = self.envi.state()
-			# print 'a1'
-			self.lock.acquire()
-			# print 'a2'
-			action = self.rl.get_action(state_init)
-			# print 'a3'
-			self.lock.release()
-			# print 'a4'
-			buffer_name = 'critic'
-			is_exploration = self.rl.determine_exploration()
-			if is_exploration:
-				mu = np.zeros(ac.length())
-				sigma = 0.05*np.ones(ac.length())
-				action += np.random.normal(mu, sigma)
-				buffer_name = 'actor'
-			# print 'a5'
-			reward = self.envi.step_forward_wingbeat(action)
-			# print 'a6'
-			state_term = self.envi.state()
-			# print 'a7'
-
-			t = [state_init, action, [reward], state_term]
-
-			if basics.check_valid_data(t):
-				return buffer_name, t
-			else:
-				return buffer_name, None
 	def __init__(self, envi, nn, warmup_file=None):
 		deepRL.DeepRLBase.__init__(self, warmup_file)
 		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
@@ -553,7 +434,8 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			# self.warmup_size = self.replay_buffer['actor'].size_accum
 		else:
 			print '[DeepRL]', 'loading warmup file ...'
-			data = self.convert_warmup_file_to_buffer_data(self.envi.get(0), self.warmup_file)
+			envi = Envi(dt, skel_file)
+			data = self.convert_warmup_file_to_buffer_data(envi, self.warmup_file)
 			self.replay_buffer['actor'].append(data,verbose=True)
 			self.warmup_size = self.replay_buffer['actor'].size_accum
 		# self.train_action(self.warmup_size/10, False, 10)
@@ -589,108 +471,57 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 				if cnt%5000 == 0:
 					print cnt, ' data were loaded'
 		return tuples
-	# def run_atomic(self, q, idx, envi, num_ep, num_iter):
-	# 	proc_name = multiprocessing.current_process().name
-	# 	print proc_name
-	# 	data = []
-	# 	for i in xrange(num_ep):
-	# 		self.init_step(envi)
-	# 		print proc_name, 'a0'
-	# 		buffer_name, datum = self.step(envi, self.is_warming_up())
-	# 		print proc_name, 'a1'
-	# 		if datum is None:
-	# 			self.init_step()
-	# 		else:
-	# 			data.append([buffer_name, datum])
-	# 	q.put(data)
-	def run(self, max_iter=32, verbose=True):
+	def run(self, max_episode=32, verbose=True):
 		if self.is_finished_trainning():
 			return
-		
-		# self.init_step()
-		# for i in xrange(max_iter):
-		# 	buffer_names, data = self.step(self.is_warming_up())
-		# 	for j in xrange(len(data)):
-		# 		if data[j] is None:
-		# 			self.envi.reset(j)
-		# 		else:
-		# 			self.replay_buffer[buffer_names[j]].append([data[j]])
-		# 	if not self.is_warming_up():
-		# 		self.train()
-		# 	# Print statistics
-		# 	if verbose:
-		# 		print '[ ', i, 'th episode ]', ' warmup: ', self.is_warming_up(), 
-		# 		for buffer_name in self.replay_buffer.keys():
-		# 			print '[', buffer_name,
-		# 			print self.replay_buffer[buffer_name].size,
-		# 			print self.replay_buffer[buffer_name].size_accum, ']',
-		# 		if not self.is_warming_up():
-		# 			self.print_loss()
-		# 		else:
-		# 			print ' '
-
-		threads=[]
-		q = Queue.Queue()
-		for i in range(self.envi.num_envis):
-			t = DeepRL_Multicore.Run_Thread(threadLock, q, self.envi.get(i), self, max_iter)
-			t.start()
-			threads.append(t)
-		for t in threads:
-			t.join()
-		while not q.empty():
-			buffer_name, datum = q.get()
-			self.replay_buffer[buffer_name].append([datum])
-
-		if not self.is_warming_up():
-			self.train()
-
-		if verbose:
-			print '[ episode ]', ' warmup: ', self.is_warming_up(), 
-			for buffer_name in self.replay_buffer.keys():
-				print '[', buffer_name,
-				print self.replay_buffer[buffer_name].size,
-				print self.replay_buffer[buffer_name].size_accum, ']',
+		self.init_step()
+		for i in xrange(max_episode):
+			buffer_names, data = self.step(self.is_warming_up())
+			for j in xrange(len(data)):
+				if data[j] is None:
+					self.envi.reset(j)
+				else:
+					self.replay_buffer[buffer_names[j]].append([data[j]])					
 			if not self.is_warming_up():
-				self.print_loss()
-			else:
-				print ' '
+				self.train()
+			# Print statistics
+			if verbose:
+				print '[ ', i, 'th episode ]', ' warmup: ', self.is_warming_up(), 
+				for buffer_name in self.replay_buffer.keys():
+					print '[', buffer_name,
+					print self.replay_buffer[buffer_name].size,
+					print self.replay_buffer[buffer_name].size_accum, ']',
+				if not self.is_warming_up():
+					self.print_loss()
+				else:
+					print ' '
 	def init_step(self):
-		self.envi.set_random_state()
+		self.envi.reset()
 	def step(self, full_random=False):
-		# proc_name = multiprocessing.current_process().name
-		# print 'get_action0: %s' % (proc_name)
-		
 		state_inits = self.envi.state()
 		actions = self.get_actions(state_inits)
-
-		# print actions
-
 		buffer_names = []
-		for i in range(len(actions)):
+		for i in range(self.envi.num_client):
 			buffer_name = 'critic'
 			is_exploration = self.determine_exploration()
 			if full_random:
-				mu = np.zeros(ac.length())
-				sigma = 0.1*np.ones(ac.length())
-				actions[i] = np.random.normal(mu, sigma)
+				actions[i] = np.random.normal(
+					np.zeros(ac.length()), 0.1*np.ones(ac.length()))
 				buffer_name = 'actor'
 			elif is_exploration:
-				mu = np.zeros(ac.length())
-				sigma = 0.05*np.ones(ac.length())
-				actions[i] += np.random.normal(mu, sigma)
+				actions[i] += np.random.normal(
+					np.zeros(ac.length()), 0.05*np.ones(ac.length()))
 				buffer_name = 'actor'
 			buffer_names.append(buffer_name)		
 		rewards = self.envi.step_forward_wingbeat(actions)
 		state_terms = self.envi.state()
-		
 		tuples = []
-		for i in range(len(state_inits)):
+		for i in range(self.envi.num_client):
 			t = [state_inits[i], actions[i], [rewards[i]], state_terms[i]]
 			if basics.check_valid_data(t):
 				tuples.append(t)
 			else:
 				tuples.append(None)
-		
 		return buffer_names, tuples
 	def sample(self, buffer_name, idx):
 		if not idx:
@@ -984,30 +815,11 @@ myEnvi = Envi(dt, skel_file)
 myNN = NN('net_turtle')
 myNN.initialize([len(myEnvi.state()),len(ac.default)])
 
-
-myEnviServer = Envi_Server(2, dt, skel_file)
-print myEnviServer.state()
-print myEnviServer.reward()
-
-for i in range(5):
-	a = []
-	for i in range(2):
-		a.append(ac.default)
-	r = myEnviServer.step_forward_wingbeat(a)
-	print r
-
-time.sleep(1000)
-
-# # myNN.initialize([len(myEnvi.state()),2],ckpt_dir)
-# myDeepRL = DeepRL(myEnvi, myNN, warmup_file)
-# envis = []
-# for i in range(multiprocessing.cpu_count()):
-# 	envis.append(Envi(dt, skel_file))
-num_envis = 32
-num_episode = 16
-myEnviMulti = Envi_Multicore(num_envis, dt, skel_file)
-# myDeepRL = DeepRL_Multicore(myEnviMulti, myNN, warmup_file)
-myDeepRL = DeepRL_Multicore(myEnviMulti, myNN)
+max_client = 16
+max_episode = 20
+myEnviServer = Envi_Server(max_client, dt, skel_file)
+myDeepRL = DeepRL_Multicore(myEnviServer, myNN, warmup_file)
+# myDeepRL = DeepRL_Multicore(myEnviServer, myNN)
 
 def step_callback():
 	return
@@ -1017,13 +829,12 @@ def render_callback():
 	gl_render.render_ground(color=[0.3,0.3,0.3],axis='y')
 	gl_render.render_ground(color=[0.3,0.3,0.3],axis='z')
 	myEnvi.render()
-	# myEnviMulti.render()
 	# gl_render.render_ground(color=[1.0,1.0,1.0],axis='z')
 	# myEnvi.detective.render(color=[0,0,1])
 	# myEnvi.criminal.render(color=[1,0,0])
 	if flag['Train']:
 		global cnt_target_update
-		myDeepRL.run(num_episode)
+		myDeepRL.run(max_episode)
 		if cnt_target_update>=max_target_update:
 			myDeepRL.save_variables()
 			cnt_target_update = 0
@@ -1033,8 +844,7 @@ def render_callback():
 
 def keyboard_callback(key):
 	if key == 'r':
-		myEnvi.set_random_state()
-		myEnviMulti.set_random_state()
+		myEnvi.reset()
 	elif key == 'p':
 		elpased = 0.0
 		while True:
