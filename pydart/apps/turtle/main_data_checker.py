@@ -34,7 +34,6 @@ def load_data(file_name):
 	f = open(file_name, 'r')
 	data = pickle.load(f)
 	size = len(data)
-	action_default = skel.controller.get_action_default()
 	data_local = []
 	data_global = []
 
@@ -156,7 +155,7 @@ def keyboard_callback(key):
         return False
     return True
 
-data_global,data_local = load_data('./data/warmup/0.15_10000_8.warmup')
+data_global,data_local = load_data('./data/warmup/0.1_5000_10.warmup')
 
 pydart.glutgui.glutgui_base.run(
 	title='Data Checker', 

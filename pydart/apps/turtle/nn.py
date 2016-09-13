@@ -5,14 +5,13 @@ import datetime
 import numpy as np
 
 def weight_variable(name, shape):
-	# initial = tf.truncated_normal(shape, stddev=0.2)
+	# initial = tf.truncated_normal(shape, stddev=0.1)
+	# return tf.Variable(initial)
 	xavier =tf.contrib.layers.xavier_initializer()
 	return tf.get_variable(name, shape=shape, initializer=xavier)
 def bias_variable(name, shape):
 	initial = tf.truncated_normal(shape, stddev=0.01)
 	return tf.Variable(initial,name=name)
-	# xavier =tf.contrib.layers.xavier_initializer()
-	# return tf.get_variable(name, shape=shape, initializer=xavier)
 def conv2d(x, W):
 	return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 def max_pool_2x2(x):

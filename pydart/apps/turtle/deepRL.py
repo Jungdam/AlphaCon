@@ -52,8 +52,8 @@ class DeepRLBase:
 		self.warmup_size = 50000
 		self.max_data_gen = 1000000
 		self.sample_size = 50
-		self.discount_factor = 0.9
-		self.exprolation_prob = 0.20
+		self.discount_factor = 0.95
+		self.exprolation_prob = 0.25
 		self.exprolation_noise = 0.1
 		self.warmup_file = warmup_file
 	def get_max_data_generation(self):
