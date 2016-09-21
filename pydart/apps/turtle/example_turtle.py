@@ -9,6 +9,7 @@ import math
 import basics
 import deepRL
 import nn
+import environment as env
 import tensorflow as tf
 import mmMath
 import action as ac
@@ -16,9 +17,6 @@ import pickle
 import profile
 import multiprocessing as mp
 import time
-
-import threading
-import Queue
 
 np.set_printoptions(precision=3)
 flag = {}
@@ -34,12 +32,11 @@ pydart.init()
 print('pydart initialization OK')
 
 profile = profile.Profile()
-threadLock = threading.Lock()
 
 def gen_warmup_data_one_process(q, idx, envi, mu, sigma, num_episode, num_wingbeat):
 	data = []
 	for ep in xrange(num_episode):
-		envi.set_random_state()
+		envi.reset()
 		for i in xrange(num_wingbeat):
 			action = ac.random(mu,sigma)
 			q_skel_init = envi.skel.q
@@ -77,16 +74,23 @@ def gen_warmup_data(mu, sigma, num_episode=2500, num_wingbeat=20):
 	return data
 
 class Target:
-	def __init__(self, mu=np.array([0,1.0,6.0]), sigma=np.array([1.5,1.5,2.0])):
-		self.mu = mu
-		self.sigma = sigma
-		self.pos = np.random.normal(self.mu,self.sigma)
+	def __init__(self, base=np.array([0.0,1.0,3.0]), dist=6.0, span=0.3333*math.pi):
+		self.base = base
+		self.dist = dist
+		self.span = span
+		self.pos = self.new_pos()
 	def reset(self):
-		self.pos = np.random.normal(self.mu,self.sigma)
+		self.pos = self.new_pos()
+	def new_pos(self):
+		z = np.random.uniform(0,self.dist)
+		r = z*math.tan(0.5*self.span)
+		x = np.random.uniform(-r,r)
+		y = np.random.uniform(-r,r)
+		return self.base+np.array([x,y,z])
 	def get_pos(self):
 		return self.pos
 
-class Envi:
+class Env(env.EnvironmentBase):
 	def __init__(self, dt, skel_file, num_init_wingbeat=2):
 		self.world = pydart.create_world(dt, skel_file)
 		self.skel = self.world.skels[0]
@@ -96,11 +100,9 @@ class Envi:
 		    if self.skel.controller.get_num_wingbeat() >= num_init_wingbeat:
 		        self.world.push()
 		        self.world.push()
-		        self.set_random_state()
+		        self.reset()
 		        break;
 		    self.world.step()
-	def set_random_state(self):
-		self.reset()
 	def reset(self):
 		self.world.reset()
 		self.skel.controller.reset()
@@ -109,7 +111,7 @@ class Envi:
 		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
 		diff = self.target.get_pos()-p
 		l = np.linalg.norm(diff)
-		return math.exp(-0.2*l*l)
+		return math.exp(-2.0*l*l)
 	def state(self):
 		#
 		# State of skeleton
@@ -137,18 +139,12 @@ class Envi:
 		# State of sensor
 		#
 		state_sensor = np.dot(R_trunk_inv,self.target.get_pos()-p_trunk)
-		# return state_sensor
+		return state_sensor
 		return np.hstack([state_skel,state_sensor])
 	def step_forward(self, apply_controller=True, apply_aero=True):
 		self.world.step(apply_controller,apply_aero)
 		return self.goodness()
-	def step_forward_time(self, delta=1.0/10.0):
-		elpased = 0.0
-		while elpased < delta:
-			self.world.step(True,True)
-			elpased += dt
-		return self.goodness()
-	def step_forward_wingbeat(self, wingbeat=None):
+	def step(self, wingbeat=None):
 		if wingbeat is not None:
 			self.skel.controller.add_action(wingbeat,True)
 		while True:
@@ -170,89 +166,14 @@ class Envi:
 		glutSolidSphere(0.25, 10, 10)
 		glPopMatrix()
 
-class Envi_Client(mp.Process):
-	def __init__(self, idx, q_input, q_result, num_init_wingbeat):
-		super(Envi_Client, self).__init__()
-		self.envi = Envi(dt, skel_file, num_init_wingbeat)
-		self.response_time = 0.001
-		self.reward = 0.0
-		self.q_input = q_input
-		self.q_result = q_result
-		self.idx = idx
-		self.proc_name = mp.current_process().name
-		print self.proc_name, idx, 'Hello!'
-	def error(self, msg):
-		print self.proc_name, idx, msg
-	def run(self):
-		while True:
-			if self.q_input.empty():
-				time.sleep(self.response_time)
-				continue
-			signal, data = self.q_input.get()
-			if signal == "step":
-				wingbeat = data
-				self.reward = self.envi.step_forward_wingbeat(wingbeat)
-				self.q_result.put(self.reward)
-			elif signal == "reward":
-				self.q_result.put(self.reward)
-			elif signal == "state":
-				self.q_result.put(self.envi.state())
-			elif signal == "reset":
-				self.envi.reset()
-			elif signal == "terminate":
-				return
-			else:
-				self.error("unknown signal - "+signal)
-
-class Envi_Server:
-	def __init__(self, num_client, dt, skel_file, num_init_wingbeat=2):
-		self.num_client = num_client
-		self.q_inputs = []
-		self.q_results = []
-		self.clients = []
-		for i in range(num_client):
-			q_input = mp.Queue()
-			q_result = mp.Queue()
-			client = Envi_Client(i, q_input, q_result, num_init_wingbeat)
-			self.q_inputs.append(q_input)
-			self.q_results.append(q_result)
-			self.clients.append(client)
-			client.start()
-	def __del__(self):
-		for c in self.clients:
-			c.terminate()
-	def check_empty_result(self):
-		for q in self.q_results:
-			if not q.empty():
-				print "[Envi_Server] error - q is not empty"
-				return False
-		return True
-	def run(self, signals, data=None):
-		result = []
-		if not self.check_empty_result():
-			return result
-		for i in range(self.num_client):
-			if data is not None:
-				self.q_inputs[i].put([signals[i],data[i]])
-			else:
-				self.q_inputs[i].put([signals[i],None])
-		for q in self.q_results:
-			while q.empty():
-				continue
-			result.append(q.get())
-		return result
-	def state(self):
-		return self.run(self.num_client*["state"])
-	def reward(self):
-		return self.run(self.num_client*["reward"])
-	def step_forward_wingbeat(self, wingbeats):
-		return self.run(self.num_client*["step"], wingbeats)
-	def reset(self, idx=None):
-		if idx is not None:
-			self.q_inputs[idx].put(["reset",None])
-		else:
-			for q in self.q_inputs:
-				q.put(["reset",None])
+def gen_env(args):
+	dt = args[0]
+	skel_file = args[1]
+	if len(args)>2:
+		num_init_wingbeat = args[2]
+		return Env(dt, skel_file, num_init_wingbeat)
+	else:
+		return Env(dt, skel_file)
 
 class NN(nn.NNBase):
 	def __init__(self, name):
@@ -270,24 +191,24 @@ class NN(nn.NNBase):
 		self.placeholder_dropout_keep_prob = None
 		self.loss_q = None
 		self.loss_a = None
-		self.learning_rate = 0.001
+		self.learning_rate = 1.0*1e-4
 		self.writer = None
 		self.merged = None
 	def initialize(self, data, ckpt_file=None):
 		tf.reset_default_graph()
 		with self.graph.as_default():
-			d = data[0]		# state dimension
-			a = data[1]		# action dimension
-			# 
+			# state dimension
+			d = data[0]
+			# action dimension
+			a = data[1]
+			
+			# placeholders for inputs
 			state = tf.placeholder(tf.float32, [None,d])
 			target_qvalue = tf.placeholder(tf.float32, [None,1])
 			target_action = tf.placeholder(tf.float32, [None,a])
 			keep_prob = tf.placeholder(tf.float32)
-
-			#
-			# Network Definition
-			#
-
+			
+			# Network definition
 			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 32)
 			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 32, 32)
 			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 32, 16, 
@@ -301,62 +222,66 @@ class NN(nn.NNBase):
 			layer_q_copy = layer_q.copy(layer_3_copy.h)
 			layer_a_copy = layer_a.copy(layer_3_copy.h)
 
-			# self.var._print()
-
 			h_qvalue = layer_q.h
 			h_action = layer_a.h
 			h_qvalue_copy = layer_q_copy.h
 			h_action_copy = layer_a_copy.h
-
+			
 			# Optimizer
 			loss_qvalue = tf.reduce_mean(tf.square(target_qvalue - h_qvalue))
 			loss_action = tf.reduce_mean(tf.square(target_action - h_action))			
-
+			
+			# Exponential decay
 			# global_step = tf.Variable(0, trainable=False)
 			# learning_rate = tf.train.exponential_decay(
 			# 	self.learning_rate, global_step, 1000000, 0.96, staircase=True)
-
-			# self.train_q = tf.train.AdamOptimizer(1e-3).minimize(loss_qvalue)
-			# self.train_a = tf.train.AdamOptimizer(1e-3).minimize(loss_action)
+			
+			# Optimization for trainning
 			opt_q = tf.train.GradientDescentOptimizer(self.learning_rate)
 			opt_a = tf.train.GradientDescentOptimizer(self.learning_rate)
-			# opt_q = tf.train.AdamOptimizer(1e-4)
-			# opt_a = tf.train.AdamOptimizer(1e-4)
-
+			# opt_q = tf.train.AdamOptimizer(self.learning_rate)
+			# opt_a = tf.train.AdamOptimizer(self.learning_rate)
 			grads_and_vars_q = opt_q.compute_gradients(loss_qvalue)
 			grads_and_vars_a = opt_a.compute_gradients(loss_action)
-
+			
+			# Gradient clipping
 			capped_grads_and_vars_q = [\
-				(tf.clip_by_norm(grad,10.0), var) if grad is not None \
+				(tf.clip_by_norm(grad,50.0), var) if grad is not None \
 				else (None, var) for grad, var in grads_and_vars_q]
 			capped_grads_and_vars_a = [\
-				(tf.clip_by_norm(grad,10.0), var) if grad is not None \
+				(tf.clip_by_norm(grad,50.0), var) if grad is not None \
 				else (None, var) for grad, var in grads_and_vars_a]
 			
-			# Trainning
+			# Gradient applying
 			self.train_q = opt_q.apply_gradients(capped_grads_and_vars_q)
 			self.train_a = opt_a.apply_gradients(capped_grads_and_vars_a)
+			
 			# Evaultion
 			self.eval_q = h_qvalue
 			self.eval_a = h_action
 			self.eval_q_copy = h_qvalue_copy
 			self.eval_a_copy = h_action_copy
+			
 			# Place holders
 			self.placeholder_state = state
 			self.placeholder_target_qvalue = target_qvalue
 			self.placeholder_target_action = target_action
 			self.placeholder_dropout_keep_prob = keep_prob
+			
 			# Loss
 			self.loss_q = loss_qvalue
 			self.loss_a = loss_action
+			
 			# Session
 			self.sess = tf.Session(graph=self.graph)			
+			
 			# Saver
 			self.saver = tf.train.Saver()
 			success = self.restore(ckpt_file)
 			if not success:
 				print '[ NeuralNet ]', 'Variables are randomly initialzed'
 				self.sess.run(tf.initialize_all_variables())
+			
 			# Summary
 			self.merged = tf.merge_all_summaries()
 			self.writer = tf.train.SummaryWriter(log_dir, self.graph)
@@ -404,11 +329,11 @@ class NN(nn.NNBase):
 		self.var.save(self.sess)
 
 class DeepRL_Multicore(deepRL.DeepRLBase):
-	def __init__(self, envi, nn, warmup_file=None):
+	def __init__(self, env, nn, warmup_file=None):
 		deepRL.DeepRLBase.__init__(self, warmup_file)
-		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
-		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
-		self.envi = envi
+		self.replay_buffer['actor'] = deepRL.ReplayBuffer(500000)
+		self.replay_buffer['critic'] = deepRL.ReplayBuffer(500000)
+		self.env = env
 		self.nn = nn
 		self.warmup_size = 0
 		self.max_data_gen = 2000000
@@ -434,13 +359,15 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			# self.warmup_size = self.replay_buffer['actor'].size_accum
 		else:
 			print '[DeepRL]', 'loading warmup file ...'
-			envi = Envi(dt, skel_file)
-			data = self.convert_warmup_file_to_buffer_data(envi, self.warmup_file)
+			data = self.convert_warmup_file_to_buffer_data(Env(dt, skel_file), self.warmup_file)
 			self.replay_buffer['actor'].append(data,verbose=True)
+			self.replay_buffer['critic'].append(data,verbose=True)
 			self.warmup_size = self.replay_buffer['actor'].size_accum
-		# self.train_action(self.warmup_size/10, False, 10)
+		for i in range(10):
+			self.train_qvalue(self.warmup_size/10)
+			self.train_action(self.warmup_size/10, False)
 		self.save_variables()
-	def convert_warmup_file_to_buffer_data(self, envi, file_name):
+	def convert_warmup_file_to_buffer_data(self, env, file_name):
 		f = open(file_name, 'r')
 		data = pickle.load(f)
 		size = len(data)
@@ -451,15 +378,15 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			q_skel_term = d[1]
 			action = d[2]
 
-			envi.set_random_state()
+			env.reset()
 
-			envi.world.skel.set_positions(q_skel_init)
-			reward_init = envi.step_forward(False,False)
-			state_init = envi.state()
+			env.world.skel.set_positions(q_skel_init)
+			reward_init = env.step_forward(False,False)
+			state_init = env.state()
 
-			envi.world.skel.set_positions(q_skel_term)
-			reward_term = envi.step_forward(False,False)
-			state_term = envi.state()
+			env.world.skel.set_positions(q_skel_term)
+			reward_term = env.step_forward(False,False)
+			state_term = env.state()
 
 			reward = reward_term
 			action_delta = np.array(basics.flatten(action)) - ac.default
@@ -479,7 +406,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			buffer_names, data = self.step(self.is_warming_up())
 			for j in xrange(len(data)):
 				if data[j] is None:
-					self.envi.reset(j)
+					self.env.reset(j)
 				else:
 					self.replay_buffer[buffer_names[j]].append([data[j]])					
 			if not self.is_warming_up():
@@ -496,27 +423,27 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 				else:
 					print ' '
 	def init_step(self):
-		self.envi.reset()
+		self.env.reset()
 	def step(self, full_random=False):
-		state_inits = self.envi.state()
+		state_inits = self.env.state()
 		actions = self.get_actions(state_inits)
 		buffer_names = []
-		for i in range(self.envi.num_client):
+		for i in range(self.env.num_slave):
 			buffer_name = 'critic'
 			is_exploration = self.determine_exploration()
 			if full_random:
-				actions[i] = np.random.normal(
-					np.zeros(ac.length()), 0.1*np.ones(ac.length()))
+				actions[i] = ac.random(
+					np.zeros(ac.dim()), 0.1*np.ones(ac.dim()))
 				buffer_name = 'actor'
 			elif is_exploration:
-				actions[i] += np.random.normal(
-					np.zeros(ac.length()), 0.05*np.ones(ac.length()))
+				actions[i] += ac.random(
+					np.zeros(ac.dim()), 0.05*np.ones(ac.dim()))
 				buffer_name = 'actor'
 			buffer_names.append(buffer_name)		
-		rewards = self.envi.step_forward_wingbeat(actions)
-		state_terms = self.envi.state()
+		rewards = self.env.step_forward_wingbeat(actions)
+		state_terms = self.env.state()
 		tuples = []
-		for i in range(self.envi.num_client):
+		for i in range(self.env.num_slave):
 			t = [state_inits[i], actions[i], [rewards[i]], state_terms[i]]
 			if basics.check_valid_data(t):
 				tuples.append(t)
@@ -620,206 +547,17 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 	def save_variables(self):
 		self.nn.save_variables()
 
-class DeepRL(deepRL.DeepRLBase):
-	def __init__(self, envi, nn, warmup_file=None):
-		deepRL.DeepRLBase.__init__(self, warmup_file)
-		self.replay_buffer['actor'] = deepRL.ReplayBuffer(1000000)
-		self.replay_buffer['critic'] = deepRL.ReplayBuffer(1000000)
-		self.envi = envi
-		self.nn = nn
-		self.warmup_size = 0
-		self.max_data_gen = 2000000
-		self.sample_size = 32
-		if warmup_file is None:
-			print '[DeepRL]', 'generating warmup data ...'
-			# cnt = 0
-			# while True:
-			# 	self.init_step()
-			# 	buffer_name, datum = self.step(full_random=True)
-			# 	if datum is None:
-			# 		self.init_step()
-			# 	else:
-			# 		self.replay_buffer['actor'].append([datum])
-			# 		cnt += 1
-			# 	if cnt >= self.warmup_size:
-			# 		break
-			# 	if cnt%1000 == 0:
-			# 		print cnt, ' data were generated'
-			# raw_data = gen_warmup_data(ac.default, [0.1]*ac.dim(), 4000, 20)
-			# data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
-			# self.replay_buffer['actor'].append(data,verbose=True)
-			# self.warmup_size = self.replay_buffer['actor'].size_accum
-		else:
-			print '[DeepRL]', 'loading warmup file ...'
-			data = self.convert_warmup_file_to_buffer_data(self.warmup_file)
-			self.replay_buffer['actor'].append(data,verbose=True)
-			self.warmup_size = self.replay_buffer['actor'].size_accum
-		self.envi.set_random_state()
-		self.save_variables()
-	def convert_warmup_file_to_buffer_data(self, file_name):
-		f = open(file_name, 'r')
-		data = pickle.load(f)
-		size = len(data)
-		tuples = []
-		cnt = 0
-		for d in data:
-			q_skel_init = d[0]
-			q_skel_term = d[1]
-			action = d[2]
-
-			self.envi.set_random_state()
-
-			self.envi.world.skel.set_positions(q_skel_init)
-			reward_init = self.envi.step_forward(False,False)
-			state_init = self.envi.state()
-
-			self.envi.world.skel.set_positions(q_skel_term)
-			reward_term = self.envi.step_forward(False,False)
-			state_term = self.envi.state()
-
-			reward = reward_term
-			action_delta = np.array(basics.flatten(action)) - ac.default
-
-			t = [state_init, action_delta, [reward], state_term]
-			if basics.check_valid_data(t):
-				tuples.append(t)
-				cnt += 1
-				if cnt%5000 == 0:
-					print cnt, ' data were loaded'
-		return tuples
-	def init_step(self):
-		self.envi.set_random_state()
-	def step(self, full_random=False, force_buffer_name=None):
-		buffer_name = 'critic'
-		is_exploration = self.determine_exploration()
-
-		state_init = self.envi.state()
-		action = self.get_action(state_init)
-		if full_random:
-			mu = np.zeros(ac.length())
-			sigma = 0.1*np.ones(ac.length())
-			action = np.random.normal(mu, sigma)
-			buffer_name = 'actor'
-		elif is_exploration:
-			mu = np.zeros(ac.length())
-			sigma = 0.05*np.ones(ac.length())
-			action += np.random.normal(mu, sigma)
-			buffer_name = 'actor'
-		reward = self.envi.step_forward_wingbeat(action)
-		state_term = self.envi.state()
-
-		t = [state_init, action, [reward], state_term]
-		# print state_init, action, reward
-		if force_buffer_name is not None:
-			buffer_name = force_buffer_name
-		if basics.check_valid_data(t):
-			return buffer_name, t
-		else:
-			return buffer_name, None
-	def sample(self, buffer_name, idx):
-		if not idx:
-			return []
-		data_state = []
-		data_action = []
-		data_reward = []
-		data_state_prime = []
-		for i in idx:
-			datum = self.replay_buffer[buffer_name].data[i]
-			data_state.append(datum[0])
-			data_action.append(datum[1])
-			data_reward.append(datum[2])
-			data_state_prime.append(datum[3])
-		return [ \
-			np.array(data_state),\
-			np.array(data_action),\
-			np.array(data_reward),\
-			np.array(data_state_prime)]
-	def compute_target_qvalue(self, reward, state_prime):
-		qvalue_prime = self.nn.eval_qvalue([state_prime], True)
-		target_qvalue = reward + self.discount_factor*qvalue_prime
-		return target_qvalue
-	def train_qvalue(self, sample_size, iteration=10, verbose=False):
-		sample_idx = self.replay_buffer['critic'].sample_idx(sample_size)
-		data = self.sample('critic', sample_idx)
-		if data:
-			data_state = data[0]
-			data_reward = data[2]
-			data_state_prime = data[3]
-			target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
-			for i in range(iteration):
-				self.nn.train_qvalue([data_state,target_qvalue])
-				if verbose:
-					print self.nn.loss_qvalue([data_state,target_qvalue])
-	def train_action(self, sample_size, check_qvalue=True, iteration=10, verbose=False):
-		sample_idx = self.replay_buffer['actor'].sample_idx(sample_size)
-		data = self.sample('actor', sample_idx)
-		if data:
-			data_state = data[0]
-			data_action = data[1]
-			data_reward = data[2]
-			data_state_prime = data[3]
-			if check_qvalue:
-				train_state = []
-				train_action = []
-				qvalue = self.nn.eval_qvalue([data_state], True)
-				target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
-				for i in xrange(len(qvalue)):
-					if target_qvalue[i][0] > qvalue[i][0]:
-						train_state.append(data_state[i])
-						train_action.append(data_action[i])
-				data_state = train_state
-				data_action = train_action
-			if data_state:
-				for i in range(iteration):
-					self.nn.train_action([data_state,data_action])
-					if verbose:
-						print self.nn.loss_action([data_state,data_action])
-	def train(self):
-		self.train_qvalue(self.sample_size)
-		self.train_action(self.sample_size)
-	def get_action(self, state):
-		val = self.nn.eval_action([[state]], True)
-		return val[0]
-	def get_qvalue(self, state):
-		val = self.nn.eval_qvalue([[state]], True)
-		return val[0][0]
-	def loss_qvalue(self, sample_size=100, buffer_name='critic'):
-		sample_idx = self.replay_buffer[buffer_name].sample_idx(sample_size)
-		data = self.sample(buffer_name, sample_idx)
-		q = 0.0
-		if data:
-			data_state = data[0]
-			data_reward = data[2]
-			data_state_prime = data[3]
-			target_qvalue = self.compute_target_qvalue(data_reward, data_state_prime)
-			q = self.nn.loss_qvalue([data_state,target_qvalue])
-		return q
-	def loss_action(self, sample_size=100, buffer_name='critic'):
-		sample_idx = self.replay_buffer[buffer_name].sample_idx(sample_size)
-		data = self.sample(buffer_name, sample_idx)
-		if data:
-			data_state = data[0]
-			data_action = data[1]
-			return self.nn.loss_action([data_state, data_action])
-		else:
-			return 0.0
-	def print_loss(self, sample_size=100):
-		q = self.loss_qvalue(sample_size)
-		a = self.loss_action(sample_size)
-		print 'Loss values: ', 'qvalue:', q, 'action:', a
-	def save_variables(self):
-		self.nn.save_variables()
-
-dt = 1.0/600.0
-myEnvi = Envi(dt, skel_file)
+dt = 1.0/1000.0
+myEnvi = Env(dt, skel_file)
 myNN = NN('net_turtle')
-myNN.initialize([len(myEnvi.state()),len(ac.default)])
+myNN.initialize([len(myEnvi.state()),len(ac.default)], ckpt_dir)
 
 max_client = 16
 max_episode = 20
-myEnviServer = Envi_Server(max_client, dt, skel_file)
-myDeepRL = DeepRL_Multicore(myEnviServer, myNN, warmup_file)
-# myDeepRL = DeepRL_Multicore(myEnviServer, myNN)
+myEnviMaster = env.Environment_Master(
+	max_client, func_gen_env=gen_env, args_gen_env=[dt, skel_file])
+myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, warmup_file)
+# myDeepRL = DeepRL_Multicore(myEnviMaster, myNN)
 
 def step_callback():
 	return
@@ -829,18 +567,16 @@ def render_callback():
 	gl_render.render_ground(color=[0.3,0.3,0.3],axis='y')
 	gl_render.render_ground(color=[0.3,0.3,0.3],axis='z')
 	myEnvi.render()
-	# gl_render.render_ground(color=[1.0,1.0,1.0],axis='z')
-	# myEnvi.detective.render(color=[0,0,1])
-	# myEnvi.criminal.render(color=[1,0,0])
 	if flag['Train']:
 		global cnt_target_update
 		myDeepRL.run(max_episode)
-		if cnt_target_update>=max_target_update:
-			myDeepRL.save_variables()
-			cnt_target_update = 0
-			print '------Target Network is updated------'
-		else:
-			cnt_target_update += 1
+		if not myDeepRL.is_finished_trainning():
+			if cnt_target_update>=max_target_update:
+				myDeepRL.save_variables()
+				cnt_target_update = 0
+				print '------Target Network is updated------'
+			else:
+				cnt_target_update += 1
 
 def keyboard_callback(key):
 	if key == 'r':
@@ -854,20 +590,6 @@ def keyboard_callback(key):
 			elpased += dt
 			if elpased >= 0.1:
 				break
-	# elif key == '[':
-		# elpased = 0.0
-		# while True:
-		# 	if myEnvi.skel.controller.is_new_wingbeat():
-		# 		myEnvi.skel.controller.add_action(ac.random(ac.default,[0.1]*ac.dim()))
-		# 	myEnvi.step_forward()
-		# 	elpased += dt
-		# 	if elpased >= 0.1:
-		# 		break
-	# elif key == ']':
-	# 	wingbeat=[]
-	# 	for i in range(num_envis):
-	# 		wingbeat.append(ac.random(ac.default,[0.1]*ac.dim()))
-	# 	myEnviMulti.step_forward_wingbeat(wingbeat, False)
 	elif key == 't':
 		print myEnvi.state()
 	elif key == ' ':

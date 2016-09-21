@@ -52,9 +52,9 @@ class DeepRLBase:
 		self.warmup_size = 50000
 		self.max_data_gen = 1000000
 		self.sample_size = 50
-		self.discount_factor = 0.95
-		self.exprolation_prob = 0.25
-		self.exprolation_noise = 0.1
+		self.discount_factor = 0.99
+		self.exp_prob_default = 0.25
+		self.exp_noise_default = 0.1
 		self.warmup_file = warmup_file
 	def get_max_data_generation(self):
 		return self.max_data_gen
@@ -89,7 +89,15 @@ class DeepRLBase:
 			cnt += self.replay_buffer[i].size_accum
 		return cnt
 	def determine_exploration(self):
-		return np.random.uniform(0.0,1.0) < self.exprolation_prob
+		return np.random.uniform(0.0,1.0) < self.exp_prob_default
+	# def get_exploration_noise(self):
+	# 	num_data = self.num_data_gen()
+	# 	max_data = self.max_data_gen
+	# 	pivot = 0.25*max_data
+	# 	if num_data < pivot:
+	# 		return self.exp_noise_default
+	# 	else:
+	# 		return self.exp_noise_default*math.exp(-num_data-pivot/max_data)
 	def is_warming_up(self):
 		return self.num_data_gen() < self.warmup_size
 	def is_finished_trainning(self):

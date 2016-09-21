@@ -5,12 +5,12 @@ import datetime
 import numpy as np
 
 def weight_variable(name, shape):
-	# initial = tf.truncated_normal(shape, stddev=0.1)
+	# initial = tf.truncated_normal(shape, stddev=0.2)
 	# return tf.Variable(initial)
 	xavier =tf.contrib.layers.xavier_initializer()
 	return tf.get_variable(name, shape=shape, initializer=xavier)
 def bias_variable(name, shape):
-	initial = tf.truncated_normal(shape, stddev=0.01)
+	initial = tf.truncated_normal(shape, stddev=0.1)
 	return tf.Variable(initial,name=name)
 def conv2d(x, W):
 	return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -92,12 +92,11 @@ class Layer:
 		else:
 			self.W = self.var.weight_variable(self.name+'_W',[self.dim_in, self.dim_out])
 			self.b = self.var.bias_variable(self.name+'_b',[self.dim_out])
-		if self.act_fn:
+		if self.act_fn is not None:
 			h = self.act_fn(tf.matmul(tensor_in, self.W) + self.b)
 		else:
 			h = tf.matmul(tensor_in, self.W) + self.b
 		if self.dropout_enabled and self.dropout_placeholder is not None:
-			self.dropout_enabled = True
 			h = tf.nn.dropout(h, self.dropout_placeholder)
 		else:
 			self.dropout_enabled = False
