@@ -1008,7 +1008,7 @@ double C_L(double theta_rad) {
     }
 
     t = (theta-xp[lo]) / (xp[hi]-xp[lo]);
-    return (1.0-t)*fp[lo]+fp[hi];
+    return (1.0-t)*fp[lo]+t*fp[hi];
 }
 
 Eigen::Vector3d computeAerodynamics(const Eigen::Vector3d& velocity, const Eigen::Vector3d& normal, const double area) { 
@@ -1027,7 +1027,7 @@ Eigen::Vector3d computeAerodynamics(const Eigen::Vector3d& velocity, const Eigen
     Eigen::Vector3d d_drag = v.normalized();
 
     // Check Reverse Direction
-    if (d_normal.dot(d_drag) < eps)
+    if (d_normal.dot(d_drag) < 0.0)
         return Eigen::Vector3d::Zero();
 
     Eigen::Vector3d l = Eigen::Vector3d::Zero();
@@ -1044,8 +1044,7 @@ Eigen::Vector3d computeAerodynamics(const Eigen::Vector3d& velocity, const Eigen
     }
 
     l.normalize();
-    Eigen::Vector3d d_lift = l.cross(d_drag);
-    d_lift.normalize();
+    Eigen::Vector3d d_lift = l.cross(d_drag).normalized();
 
     Eigen::Vector3d v_n = d_drag.dot(d_normal) * v;
     Eigen::Vector3d v_t = v - v_n;

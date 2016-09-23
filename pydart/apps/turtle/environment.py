@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import time
 import multiprocessing as mp
 
 class EnvironmentBase:
@@ -47,9 +48,9 @@ class Environment_Slave(mp.Process):
 			if self.q_input.empty():
 				time.sleep(self.response_time)
 				continue
-			signal, action = self.q_input.get()
+			signal, data = self.q_input.get()
 			if signal == "step":
-				self.reward = self.env.step(action)
+				self.reward = self.env.step(data)
 				self.q_result.put(self.reward)
 			elif signal == "state":
 				self.q_result.put(self.env.state())
@@ -58,10 +59,12 @@ class Environment_Slave(mp.Process):
 			elif signal == "terminate":
 				return
 			else:
-				self.error("unknown signal - "+signal)
+				self.run_extra(signal, data)
+	def run_extra(self, signal, data):
+		return
 
 class Environment_Master:
-	def __init__(self, num_slave, func_gen_env, args_gen_env):
+	def __init__(self, num_slave, func_gen_env, args_gen_env, env_slave_custom=None):
 		self.num_slave = num_slave
 		self.q_inputs = []
 		self.q_results = []
@@ -71,7 +74,10 @@ class Environment_Master:
 			q_result = mp.Queue()
 			self.q_inputs.append(q_input)
 			self.q_results.append(q_result)
-			slave = Environment_Slave(i, q_input, q_result, func_gen_env, args_gen_env)
+			if env_slave_custom is None:
+				slave = Environment_Slave(i, q_input, q_result, func_gen_env, args_gen_env)
+			else:
+				slave = env_slave_custom(i, q_input, q_result, func_gen_env, args_gen_env)
 			self.slaves.append(slave)
 			slave.start()
 	def __del__(self):

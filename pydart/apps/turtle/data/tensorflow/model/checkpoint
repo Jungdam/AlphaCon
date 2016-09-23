@@ -1,2 +1,2 @@
-model_checkpoint_path: "/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/net_turtle_20160920_210429.ckpt"
-all_model_checkpoint_paths: "/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/net_turtle_20160920_210429.ckpt"
+model_checkpoint_path: "/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/net_turtle_20160922_135842.ckpt"
+all_model_checkpoint_paths: "/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/net_turtle_20160922_135842.ckpt"
