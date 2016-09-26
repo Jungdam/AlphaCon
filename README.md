@@ -1,4 +1,4 @@
-## PyDart
+## AlphaCon
 
 <table>
 <tr>
@@ -8,21 +8,22 @@
 <td>
   <img src="https://www.python.org/static/community_logos/python-logo.png" width="150" height="50" />
 </td>
+<td>  
+  <img src="https://avatars2.githubusercontent.com/u/15658638?v=3&s=200" width="150" height="50" />
+</td>
 </tr>
 </table>
 
-- News! (06/SEP/2015)
- + PyDART is updated for DART 5.0. 
-
 ======
-AlphaCon is an python based open source Deep Reinforcement Learnning (DeepRL) frame work powered by [TensorFlow](https://tensorflow.org)(1.0), [PyDART](https://github.com/sehoonha/pydart)(5.0), open source deeplearnning, physics simulator softwares each other.
+PyDART is an open source python binding of [DART](https://github.com/dartsim/dart)(5.0), an open source physics simulator.
+All APIs are designed to provide a concise and powerful control on [DART](https://github.com/dartsim/dart) physics worlds.
 
 ## Requirements
 - [DART](https://github.com/dartsim/dart)(5.0)
  + https://github.com/dartsim/dart/wiki/Installation
 - [SWIG](http://www.swig.org/) (Simplified Wrapper and Interface Generator)
 - [NumPy](http://www.numpy.org/) & [SciPy](http://www.scipy.org/)
-- [PyOpenGL](http://pyopengl.sourceforge.net/)
+- [PyOpenGL](http://pyopengl.sourceforge.net/) 
 ```
 sudo apt-get install swig python-pip libatlas-base-dev gfortran 
 sudo pip install numpy scipy PyOpenGL PyOpenGL_accelerate
@@ -31,7 +32,7 @@ sudo pip install numpy scipy PyOpenGL PyOpenGL_accelerate
 ## Installation
 - Checkout the project
 ```
-git clone https://github.com/Jungdam/AlphaCon.git
+git clone https://github.com/sehoonha/pydart.git
 cd pydart
 ```
 - Compile the API
@@ -49,7 +50,7 @@ sudo python setup.py develop
 ```
 - Run the first application
 ```
-python apps/turtle/example_toy.py
+python apps/helloPyDART/main.py
 ```
 
 ## Screenshots
