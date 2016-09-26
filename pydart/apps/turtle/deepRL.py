@@ -54,7 +54,7 @@ class DeepRLBase:
 		self.sample_size = 50
 		self.discount_factor = 0.99
 		self.exp_prob_default = 0.25
-		self.exp_noise_default = 0.3
+		self.exp_noise_default = 0.1
 		self.warmup_file = warmup_file
 	def get_max_data_generation(self):
 		return self.max_data_gen

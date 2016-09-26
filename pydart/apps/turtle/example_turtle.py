@@ -28,6 +28,11 @@ ckpt_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/m
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.3_5000_10_noprior.warmup'
 
+num_init_wingbeat = 2
+dt = 1.0/1000.0
+max_client = 16
+max_steps = 20
+
 pydart.init()
 print('pydart initialization OK')
 
@@ -561,15 +566,12 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 	def save_variables(self):
 		self.nn.save_variables()
 
-num_init_wingbeat = 0
-dt = 1.0/1000.0
+
 myEnvi = Env(dt, skel_file, num_init_wingbeat)
 myNN = NN('net_turtle')
 myNN.initialize([len(myEnvi.state()),len(ac.default)])
 # myNN.initialize([len(myEnvi.state()),len(ac.default)], ckpt_dir)
 
-max_client = 16
-max_steps = 20
 myEnviMaster = En_Master_Custom(
 	max_client, 
 	gen_env, 
@@ -686,7 +688,7 @@ def keyboard_callback(key):
 	elif key == 's':
 		myNN.save(ckpt_dir)
 	elif key == 'w':
-		gen_warmup_data(ac.default, [0.3]*ac.dim(), 5000, 10)
+		gen_warmup_data(ac.default, [0.1]*ac.dim(), 5000, 10)
 	elif key == '0':
 		sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
 		data = myDeepRL.sample('critic', sample_idx)
