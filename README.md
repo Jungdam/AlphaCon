@@ -15,8 +15,7 @@
 </table>
 
 ======
-PyDART is an open source python binding of [DART](https://github.com/dartsim/dart)(5.0), an open source physics simulator.
-All APIs are designed to provide a concise and powerful control on [DART](https://github.com/dartsim/dart) physics worlds.
+AlphaCon is an open source Deep Reinforcement Learnning (DeepRL) Environment written by python and C++, based on [PyDART](https://github.com/sehoonha/pydart)(5.0), [TensorFlow](https://github.com/tensorflow)(1.0).
 
 ## Requirements
 - [DART](https://github.com/dartsim/dart)(5.0)
@@ -32,7 +31,7 @@ sudo pip install numpy scipy PyOpenGL PyOpenGL_accelerate
 ## Installation
 - Checkout the project
 ```
-git clone https://github.com/sehoonha/pydart.git
+git clone https://github.com/Jungdam/AlphaCon.git
 cd pydart
 ```
 - Compile the API
@@ -50,7 +49,8 @@ sudo python setup.py develop
 ```
 - Run the first application
 ```
-python apps/helloPyDART/main.py
+python apps/turtle/example_toy.py
+python apps/turtle/example_turtle.py
 ```
 
 ## Screenshots
