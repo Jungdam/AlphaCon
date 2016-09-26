@@ -64,3 +64,4 @@ target/
 #neural net
 *.net
 *.warmup
+*.out.tfevents.*
