@@ -24,9 +24,11 @@ flag['Train'] = False
 cnt_target_update = 0
 max_target_update = 20
 log_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/log'
-ckpt_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/'
+ckpt_dir = None
+# ckpt_dir = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/tensorflow/model/'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
-warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.3_5000_10_noprior.warmup'
+warmup_file = None
+# warmup_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/warmup/0.3_5000_10_noprior.warmup'
 
 num_init_wingbeat = 2
 dt = 1.0/1000.0
@@ -569,8 +571,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 
 myEnvi = Env(dt, skel_file, num_init_wingbeat)
 myNN = NN('net_turtle')
-myNN.initialize([len(myEnvi.state()),len(ac.default)])
-# myNN.initialize([len(myEnvi.state()),len(ac.default)], ckpt_dir)
+myNN.initialize([len(myEnvi.state()),len(ac.default)], ckpt_dir)
 
 myEnviMaster = En_Master_Custom(
 	max_client, 
@@ -578,12 +579,7 @@ myEnviMaster = En_Master_Custom(
 	[dt, skel_file, num_init_wingbeat],
 	Env_Slave_Custom)
 
-# print myEnviMaster.get_target_pos()
-# myEnviMaster.set_target_pos(max_client*[np.array([1.0,1.0,1.0])])
-# print myEnviMaster.get_target_pos()
-
 myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, warmup_file)
-# myDeepRL = DeepRL_Multicore(myEnviMaster, myNN)
 
 def gen_warmup_data_one_process(q, idx, env, mu, sigma, num_episode, num_wingbeat):
 	data = []
