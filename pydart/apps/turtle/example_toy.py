@@ -153,12 +153,12 @@ class NNToy(nn.NNBase):
 			# Network Definition
 			#
 
-			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 32)
-			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 32, 32)
-			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 32, 16, 
+			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 8)
+			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 8, 16)
+			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 16, 8, 
 				dropout_enabled=True, dropout_placeholder=keep_prob)
-			layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 16, 1, None)
-			layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 16, a, None)
+			layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 8, 1, None)
+			layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 8, a, None)
 
 			layer_1_copy = layer_1.copy(state)
 			layer_2_copy = layer_2.copy(layer_1_copy.h)

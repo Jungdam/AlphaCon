@@ -107,7 +107,7 @@ class Environment_Master:
 		return self.run(self.num_slave*["state"])
 	def reward(self):
 		return self.run(self.num_slave*["reward"])
-	def step_forward_wingbeat(self, wingbeats):
+	def step(self, wingbeats):
 		return self.run(self.num_slave*["step"], wingbeats)
 	def reset(self, idx=None):
 		if idx is not None:

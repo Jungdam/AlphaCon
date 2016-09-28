@@ -54,7 +54,8 @@ class DeepRLBase:
 		self.sample_size = 50
 		self.discount_factor = 0.99
 		self.exp_prob_default = 0.25
-		self.exp_noise_default = 0.1
+		self.exp_noise_default = 0.3
+		self.qvalue_knoll_default = 1.0
 		self.warmup_file = warmup_file
 	def get_max_data_generation(self):
 		return self.max_data_gen
@@ -90,15 +91,21 @@ class DeepRLBase:
 		return cnt
 	def determine_exploration(self):
 		return np.random.uniform(0.0,1.0) < self.exp_prob_default
-	def get_exploration_noise(self):
+	def quad_decay(self, val, pivot_offset=0.25):
 		num_data = self.num_data_gen()
 		max_data = self.max_data_gen
-		pivot = 0.25*max_data
+		pivot = pivot_offset*max_data
 		if num_data < pivot:
-			return self.exp_noise_default
+			return val
 		else:
 			r = (num_data - pivot)/max_data
-			return self.exp_noise_default * (1.0-r) * (1.0-r)
+			return val * (1.0-r) * (1.0-r)
+	def get_random_noise(self):
+		return 2*self.exp_noise_default
+	def get_exploration_noise(self):
+		return self.quad_decay(self.exp_noise_default)
+	def get_qvalue_knoll(self):
+		return self.quad_decay(self.qvalue_knoll_default)
 	def is_warming_up(self):
 		return self.num_data_gen() < self.warmup_size
 	def is_finished_trainning(self):

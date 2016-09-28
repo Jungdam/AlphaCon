@@ -35,14 +35,14 @@ class Controller:
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
         self.time = 0.0
-    def add_action(self, action, delta_moode=False):
-        if delta_moode:
-            self.action.append(ac.default+action)
-        else:
-            self.action.append(action)
-        if self.action[-1][-1] <= 0.0:
-            print action
-            raise Exception('[Action]', 'negative time length')
+    def add_action(self, action):
+        a = np.array(action)
+        if not ac.check_range(a):
+            a_valid = ac.clamp(a)
+            print '[Action]', 'out of valid range.'
+            # print 'Set', a, 'to', a_valid
+            a = a_valid
+        self.action.append(a)
     def get_tau_sum(self):
         return self.tau_sum
     def get_eye(self):
