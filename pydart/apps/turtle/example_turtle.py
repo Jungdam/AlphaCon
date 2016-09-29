@@ -25,13 +25,13 @@ cnt_target_update = 0
 max_target_update = 20
 log_dir = './data/tensorflow/log'
 ckpt_load_dir = None
-ckpt_load_dir = './data/tensorflow/model/'
+# ckpt_load_dir = './data/tensorflow/model/'
 ckpt_save_dir = './data/tensorflow/model/'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
 warmup_file = None
-warmup_file = './data/warmup/0.6_5000_10_noprior.warmup'
+warmup_file = './data/warmup/0.3_1000_10.warmup'
 
-num_init_wingbeat = 0
+num_init_wingbeat = 2
 dt = 1.0/1000.0
 max_client = 16
 max_steps = 20
@@ -61,8 +61,8 @@ profile = profile.Profile()
 class Target:
 	def __init__(self, 
 		base=np.array([0.0,1.0,0.0]), 
-		offset=np.array([0.0,0.0,0.0]),
-		sigma=np.array([2.0,2.0,3.0])):
+		offset=np.array([0.0,0.0,4.0]),
+		sigma=np.array([2.0,2.0,2.0])):
 		self.base = base
 		self.offset = offset
 		self.sigma = sigma
@@ -97,7 +97,7 @@ class Env(env.EnvironmentBase):
 		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
 		diff = self.target.get_pos()-p
 		l = np.linalg.norm(diff)
-		return math.exp(-1.0*l*l)
+		return math.exp(-0.5*l*l)
 	def state(self):
 		#
 		# State of skeleton
@@ -212,9 +212,9 @@ class NN(nn.NNBase):
 			keep_prob = tf.placeholder(tf.float32)
 			
 			# Network definition
-			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 64)
-			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 64, 128)
-			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 128, 32, 
+			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 32)
+			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 32, 32)
+			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 32, 32, 
 				dropout_enabled=True, dropout_placeholder=keep_prob)
 			layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 32, 1, None)
 			layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 32, a, None)
@@ -370,14 +370,14 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			self.replay_buffer['actor'].append(data,verbose=True)
 			self.replay_buffer['critic'].append(data,verbose=True)
 			self.warmup_size = self.replay_buffer['actor'].size_accum
-		# for i in range(1000):
-		# 	self.train_qvalue(self.sample_size)
-		# 	self.train_action(self.sample_size)
-		# 	if i%20==0:
-		# 		self.save_variables()
-		# 	if i%100==0:
-		# 		self.print_loss()
-		# 		print ' '
+		for i in range(1000):
+			self.train_qvalue(self.sample_size)
+			self.train_action(self.sample_size)
+			if i%20==0:
+				self.save_variables()
+			if i%100==0:
+				self.print_loss()
+				print ' '
 		self.save_variables()
 	def convert_warmup_file_to_buffer_data(self, env, file_name):
 		f = open(file_name, 'r')
@@ -463,10 +463,11 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 						self.get_random_noise()*np.ones(ac.dim))
 					buffer_name = 'actor'
 				elif is_exploration:
-					actions[i] += np.random.normal(np.zeros(ac.dim),
-						[self.get_exploration_noise()]*ac.dim)
-					actions[i] = ac.clamp(actions[i])
+					actions[i] = ac.random(actions[i], 
+						self.get_exploration_noise()*np.ones(ac.dim))
 					buffer_name = 'actor'
+			if buffer_name == 'critic':
+				actions[i] = ac.clamp(actions[i])
 			buffer_names.append(buffer_name)
 		rewards = self.env.step(actions)
 		state_terms = self.env.state()
@@ -705,7 +706,7 @@ def keyboard_callback(key):
 		myNN.save(ckpt_save_dir)
 	elif key == 'w':
 		gen_warmup_data(ac.default, 
-			[myDeepRL.get_random_noise()]*ac.dim, 5000, 10)
+			[myDeepRL.get_random_noise()]*ac.dim, 1000, 10)
 	elif key == '0':
 		sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
 		data = myDeepRL.sample('critic', sample_idx)

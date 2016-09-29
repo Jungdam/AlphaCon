@@ -1,0 +1,13 @@
+# Network definition
+layer_1 = nn.Layer('layer_1',self.var, False, state, d, 32)
+layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 32, 32)
+layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 32, 32, 
+	dropout_enabled=True, dropout_placeholder=keep_prob)
+layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 32, 1, None)
+layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 32, a, None)
+
+layer_1_copy = layer_1.copy(state)
+layer_2_copy = layer_2.copy(layer_1_copy.h)
+layer_3_copy = layer_3.copy(layer_2_copy.h)
+layer_q_copy = layer_q.copy(layer_3_copy.h)
+layer_a_copy = layer_a.copy(layer_3_copy.h)
