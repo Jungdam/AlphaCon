@@ -1,5 +1,45 @@
+from abc import ABCMeta, abstractmethod
 import numpy as np
 import basics
+
+class ActionBase:
+	def __init__(self, dim):
+		self.dim = dim
+		self.val_def = np.zeros(self.dim)
+		self.val_min = None
+		self.val_max = None
+		self.initialize()
+	@abstractmethod
+	def initialize(self):
+		raise NotImplementedError("Must override")
+	def clamp(self, a):
+		act = np.array(a)
+		if self.val_min is None or self.val_max is None:
+			return act
+		for i in range(self.dim):
+			if act[i]<self.val_min[i]:
+				act[i] = self.val_min[i]
+			if act[i]>self.val_max[i]:
+				act[i] = self.val_max[i]
+		return act
+	def check_range(self, a):
+		if self.val_min is None or self.val_max is None:
+			return True
+		for i in range(self.dim):
+			if a[i]<self.val_min[i] or a[i]>self.val_max[i]:
+				return False
+		return True
+	def random(self, sigma, apply_clamp=True):
+		act = np.random.normal(self.val_def, sigma)
+		if apply_clamp:
+			return self.clamp(act)
+		else:
+			return act
+	def delta(self, a):
+		return a-self.val_def
+	def add(self, a):
+		return a+self.val_def
+
 
 default = np.array([\
 	-1.25567921, 0.6118376, 0.53513041, 0.28105493, 0.78491477, -0.65140349, \
@@ -19,7 +59,7 @@ val_max = np.array([\
 # default = np.array([\
 # 	0, 0, 0, 0, 0, 0,
 # 	0, 0, 0, 0, 0, 0,
-# 	2.0])
+# 	1.5])
 
 # val_min = np.array([\
 # 	-2.0, -2.0, -2.0, -2.0, -2.0, -2.0,
@@ -29,7 +69,7 @@ val_max = np.array([\
 # val_max = np.array([\
 # 	2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
 # 	2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
-# 	3.5])
+# 	2.5])
 
 dim_left = 6
 dim_right = 6

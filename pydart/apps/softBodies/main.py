@@ -17,5 +17,5 @@ if 'qt' in sys.argv:
                                 trans=[0.07, 0.03, -2.00])
     pydart.qtgui.run(title='softBodies', simulation=world, trackball=tb)
 else:
-    pydart.glutgui.run(title='softBodies', simulation=world,
+    pydart.glutgui.glutgui.run(title='softBodies', simulation=world,
                        trans=[0, -0.1, -1.4])

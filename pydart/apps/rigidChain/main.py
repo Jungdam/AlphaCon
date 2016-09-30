@@ -36,4 +36,4 @@ if 'qt' in sys.argv:
                                 trans=[0.02, 0.09, -1.0])
     pydart.qtgui.run(title='rigidChain', simulation=world, trackball=tb)
 else:
-    pydart.glutgui.run(title='rigidChain', simulation=world)
+    pydart.glutgui.glutgui.run(title='rigidChain', simulation=world)

@@ -43,6 +43,8 @@ class Controller:
             # print 'Set', a, 'to', a_valid
             a = a_valid
         self.action.append(a)
+    def get_tau(self):
+        return self.tau
     def get_tau_sum(self):
         return self.tau_sum
     def get_eye(self):
@@ -143,9 +145,35 @@ class Controller:
         # Make sure the first six are zero
         tau[0:6] = 0.0
         for i in range(len(tau)):
-            if tau[i] > 1000.0:
-                tau[i] = 1000.0
-            if tau[i] < -1000.0:
-                tau[i] = -1000.0
+            if tau[i] > 100.0:
+                tau[i] = 100.0
+            if tau[i] < -100.0:
+                tau[i] = -100.0
         self.tau_sum += np.linalg.norm(tau)
+        self.tau = tau
         return tau
+
+class ControllerTorque:
+    """ Add damping force to the skeleton """
+    def __init__(self, world, skel):
+        self.world = world
+        self.skel = skel
+        self.h = world.dt
+        self.actuable_dofs = self.skel.ndofs-6
+        self.torque = np.zeros(self.actuable_dofs)
+        self.torque_sum = 0.0
+    def reset(self):
+        self.torque = np.zeros(self.actuable_dofs)
+        self.torque_sum = 0.0
+    def set_torque(self, torque):
+        if len(torque) != self.actuable_dofs:
+            raise Exception('Controller', 'actuable dofs is not matched')
+        self.torque = torque
+    def get_torque_sum(self):
+        return self.tau_sum
+    def reset_torque_sum(self):
+        self.tau_sum = 0.0
+    def compute(self):
+        self.torque_sum += np.linalg.norm(self.torque)
+        t = np.hstack([np.zeros(6),self.torque])
+        return t
