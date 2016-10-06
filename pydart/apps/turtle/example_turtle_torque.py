@@ -29,12 +29,12 @@ ckpt_load_dir = None
 ckpt_save_dir = './data/tensorflow/model/torque'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle_test.skel'
 warmup_file = None
-warmup_file = './data/warmup/0.1_5_10_torque.warmup'
+# warmup_file = './data/warmup/0.05_10_10_torque.warmup'
 
 num_init_wingbeat = 0
 dt = 1.0/1000.0
-max_client = 16
-max_steps = int(1.0/dt)
+max_client = 8
+max_steps = 200 #int(1.0/dt)
 
 pydart.init()
 print('pydart initialization OK')
@@ -83,7 +83,11 @@ class Env(env.EnvironmentBase):
 		R,p = mmMath.T2Rp(self.skel.body('trunk').T)
 		diff = self.target.get_pos()-p
 		l = np.linalg.norm(diff)
-		return math.exp(-0.5*l*l)
+		t = np.linalg.norm(self.skel.controller.get_torque())
+		goal = math.exp(-0.5*l*l)
+		effort = math.exp(-1.0e-2*t*t)
+		# print "Goal:", goal, "Effort:", effort
+		return 1.0e02*goal-1.0e-4*t*t
 	def state(self):
 		#
 		# State of skeleton
@@ -267,7 +271,7 @@ class NN(nn.NNBase):
 		self.placeholder_dropout_keep_prob = None
 		self.loss_q = None
 		self.loss_a = None
-		self.learning_rate = 1.0*1e-3
+		self.learning_rate = 1.0*1e-4
 		self.writer = None
 		self.merged = None
 	def initialize(self, data, ckpt_file=None):
@@ -408,15 +412,15 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 		print warmup_file
 		deepRL.DeepRLBase.__init__(self, warmup_file)
 		self.exp_prob_default = 0.5
-		self.exp_noise_default = 0.05
-		self.qvalue_knoll_default = 0.5
+		self.exp_noise_default = 0.1
+		self.qvalue_knoll_default = 1.0
 		self.replay_buffer['actor'] = deepRL.ReplayBuffer(500000)
 		self.replay_buffer['critic'] = deepRL.ReplayBuffer(500000)
 		self.env = env
 		self.nn = nn
 		self.ac = ac
 		self.warmup_size = 0
-		self.max_data_gen = 1000000
+		self.max_data_gen = 2000000
 		self.sample_size = 64
 		self.target_pos_pool = []
 		while len(self.target_pos_pool) < self.env.num_slave:
@@ -448,7 +452,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			self.replay_buffer['critic'].append(data,verbose=True)
 			self.warmup_size = self.replay_buffer['actor'].size_accum
 		num_action_trained = 0
-		for i in range(1000):
+		for i in range(10000):
 			self.train_qvalue(self.sample_size)
 			num_action_trained += self.train_action(self.sample_size)
 			if i%20==0:
@@ -471,11 +475,11 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 
 			env.reset()
 
-			env.world.skel.set_positions(q_skel_init)
+			env.world.skel.set_states(q_skel_init)
 			reward_init = env.step_forward(False,False)
 			state_init = env.state()
 
-			env.world.skel.set_positions(q_skel_term)
+			env.world.skel.set_states(q_skel_term)
 			reward_term = env.step_forward(False,False)
 			state_term = env.state()
 
@@ -688,40 +692,57 @@ def gen_warmup_data_one_process(q, idx, sigma, num_episode, num_wingbeat):
 			action = act.random(sigma)
 			con.add_action(action)
 			while True:
-				q_skel_init = env.skel.q
+				state_skel_init = np.array(env.skel.states())
 				env.step_forward()
-				q_skel_term = env.skel.q
-				torque = con.get_tau()[6:]
-				data.append([q_skel_init, q_skel_term, torque])
-				if len(data)%100 == 0:
-					print '[', idx, ']', len(data), 'data generated'
+				state_skel_term = np.array(env.skel.states())
+				torque = np.array(con.get_tau()[6:])
+				data.append([state_skel_init, state_skel_term, torque])
+				if len(data)%1000 == 0:
+					print '[', idx, ep, ']', len(data), 'data generated'
 				if con.is_new_wingbeat():
 					break
 	q.put(data)
 
 def gen_warmup_data(sigma, num_episode=2500, num_wingbeat=20):
-	num_cores = mp.cpu_count()
+	num_cores = 2 #mp.cpu_count()
 	data = []
+	data1 = []
+	data2 = []
 	ps = []
 	q = mp.Queue()
 	num_episode_assigned = [num_episode/num_cores]*num_cores
 	for i in range(num_episode%num_cores):
 		num_episode_assigned[i] += 1
 	for i in xrange(num_cores):
-		p = mp.Process(
-			target=gen_warmup_data_one_process, 
-			args=(q, i, sigma, num_episode_assigned[i], num_wingbeat))
-		p.start()
-		ps.append(p)
-	for i in xrange(num_cores):
-		data = data + q.get()
-	for i in xrange(num_cores):
+		if num_episode_assigned[i] > 0:
+			p = mp.Process(
+				target=gen_warmup_data_one_process, 
+				args=(q, i, sigma, num_episode_assigned[i], num_wingbeat))
+			p.start()
+			ps.append(p)
+	cnt = 0
+	while True:
+		d = q.get()
+		print len(d)
+		if cnt==0:
+			data1 = data1 + d
+		else:
+			data2 = data2 + d
+		data = data + d
+		cnt += 1
+		if cnt>=num_cores:
+			break
+		time.sleep(0.1)
+	for i in xrange(len(ps)):
 		ps[i].join()
-	for i in xrange(num_cores):
-		ps[i].terminate()
+	
 
-	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque.warmup', 'w')
-	pickle.dump(data, f)
+	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque1.warmup', 'w')
+	pickle.dump(data1, f)
+	f.close()
+
+	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque2.warmup', 'w')
+	pickle.dump(data2, f)
 	f.close()
 
 	return data
@@ -789,8 +810,7 @@ def keyboard_callback(key):
 	elif key == 's':
 		myNN.save(ckpt_save_dir)
 	elif key == 'w':
-		a = 1.0
-		gen_warmup_data([0.1]*13, 5, 10)
+		gen_warmup_data([0.2]*13, 5, 10)
 	elif key == '0':
 		sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
 		data = myDeepRL.sample('critic', sample_idx)

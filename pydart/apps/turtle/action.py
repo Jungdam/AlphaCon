@@ -8,6 +8,7 @@ class ActionBase:
 		self.val_def = np.zeros(self.dim)
 		self.val_min = None
 		self.val_max = None
+		self.rand = np.random.RandomState(np.random.randint(1000))
 		self.initialize()
 	@abstractmethod
 	def initialize(self):
@@ -30,7 +31,7 @@ class ActionBase:
 				return False
 		return True
 	def random(self, sigma, apply_clamp=True):
-		act = np.random.normal(self.val_def, sigma)
+		act = self.rand.normal(self.val_def, sigma)
 		if apply_clamp:
 			return self.clamp(act)
 		else:

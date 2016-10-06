@@ -145,10 +145,10 @@ class Controller:
         # Make sure the first six are zero
         tau[0:6] = 0.0
         for i in range(len(tau)):
-            if tau[i] > 100.0:
-                tau[i] = 100.0
-            if tau[i] < -100.0:
-                tau[i] = -100.0
+            if tau[i] > 500.0:
+                tau[i] = 500.0
+            if tau[i] < -500.0:
+                tau[i] = -500.0
         self.tau_sum += np.linalg.norm(tau)
         self.tau = tau
         return tau
@@ -169,6 +169,8 @@ class ControllerTorque:
         if len(torque) != self.actuable_dofs:
             raise Exception('Controller', 'actuable dofs is not matched')
         self.torque = torque
+    def get_torque(self):
+        return self.torque
     def get_torque_sum(self):
         return self.tau_sum
     def reset_torque_sum(self):

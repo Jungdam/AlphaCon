@@ -29,9 +29,9 @@ ckpt_load_dir = None
 ckpt_save_dir = './data/tensorflow/model/'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle_test.skel'
 warmup_file = None
-# warmup_file = './data/warmup/0.6_5000_10_noprior.warmup'
+# warmup_file = './data/warmup/0.3_1000_10.warmup'
 
-num_init_wingbeat = 0
+num_init_wingbeat = 2
 dt = 1.0/1000.0
 max_client = 16
 max_steps = 20
@@ -61,8 +61,8 @@ profile = profile.Profile()
 class Target:
 	def __init__(self, 
 		base=np.array([0.0,1.0,0.0]), 
-		offset=np.array([0.0,0.0,4.0]),
-		sigma=np.array([2.0,2.0,2.0])):
+		offset=np.array([0.0,0.0,3.0]),
+		sigma=np.array([4.0,4.0,4.0])):
 		self.base = base
 		self.offset = offset
 		self.sigma = sigma
@@ -195,7 +195,7 @@ class NN(nn.NNBase):
 		self.placeholder_dropout_keep_prob = None
 		self.loss_q = None
 		self.loss_a = None
-		self.learning_rate = 1.0*1e-2
+		self.learning_rate = 1.0*1e-3
 		self.writer = None
 		self.merged = None
 	def initialize(self, data, ckpt_file=None):
@@ -339,7 +339,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 		self.env = env
 		self.nn = nn
 		self.warmup_size = 0
-		self.max_data_gen = 1000000
+		self.max_data_gen = 2000000
 		self.sample_size = 64
 		self.target_pos_pool = []
 		while len(self.target_pos_pool) < self.env.num_slave:
@@ -678,7 +678,8 @@ def keyboard_callback(key):
 				state = myEnvi.state()
 				reward = myEnvi.goodness()
 				action = ac.random(ac.default,
-					[myDeepRL.get_random_noise()]*ac.dim)
+					[0.1]*ac.dim)
+					# [myDeepRL.get_random_noise()]*ac.dim)
 				myEnvi.skel.controller.add_action(action)
 				print 'S:', state, 'A:', action, 'R:', reward
 			myEnvi.step_forward()

@@ -1,2 +1,2 @@
-model_checkpoint_path: "net_turtle_20160929_090802.ckpt"
-all_model_checkpoint_paths: "net_turtle_20160929_090802.ckpt"
+model_checkpoint_path: "net_turtle_20160930_222235.ckpt"
+all_model_checkpoint_paths: "net_turtle_20160930_222235.ckpt"
