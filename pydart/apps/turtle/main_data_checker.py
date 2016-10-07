@@ -22,7 +22,7 @@ data_rel_local = None
 
 dt = 1.0/600.0
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle.skel'
-data_file = './data/warmup/0.2_5_10_torque2.warmup'
+data_file = './data/warmup/0.2_10_10_torque.warmup'
 pydart.init()
 
 world = pydart.create_world(dt, skel_file)

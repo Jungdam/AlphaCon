@@ -1,14 +1,17 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
 import basics
+import time
 
 class ActionBase:
-	def __init__(self, dim):
+	def __init__(self, dim, randseed=None):
 		self.dim = dim
 		self.val_def = np.zeros(self.dim)
 		self.val_min = None
 		self.val_max = None
-		self.rand = np.random.RandomState(np.random.randint(1000))
+		if randseed is None:
+			randseed = int(time.time()*10000)%10000
+		self.rand = np.random.RandomState(randseed)
 		self.initialize()
 	@abstractmethod
 	def initialize(self):

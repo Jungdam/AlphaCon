@@ -22,19 +22,19 @@ np.set_printoptions(precision=3)
 flag = {}
 flag['Train'] = False
 cnt_target_update = 0
-max_target_update = 10
+max_target_update = 1
 log_dir = './data/tensorflow/log'
 ckpt_load_dir = None
 # ckpt_load_dir = './data/tensorflow/model/torque'
 ckpt_save_dir = './data/tensorflow/model/torque'
 skel_file = '/home/jungdam/Research/AlphaCon/pydart/apps/turtle/data/skel/turtle_test.skel'
 warmup_file = None
-# warmup_file = './data/warmup/0.05_10_10_torque.warmup'
+warmup_file = './data/warmup/0.2_10_10_torque.warmup'
 
 num_init_wingbeat = 0
 dt = 1.0/1000.0
 max_client = 8
-max_steps = 200 #int(1.0/dt)
+max_steps = int(1.0/dt)*4
 
 pydart.init()
 print('pydart initialization OK')
@@ -44,8 +44,8 @@ profile = profile.Profile()
 class Action(ac.ActionBase):
 	def initialize(self):
 		self.val_def = np.zeros(self.dim)
-		self.val_min = -100.0*np.ones(self.dim)
-		self.val_max = 100.0*np.ones(self.dim)
+		self.val_min = -500.0*np.ones(self.dim)
+		self.val_max = 500.0*np.ones(self.dim)
 
 class Target:
 	def __init__(self, 
@@ -87,7 +87,7 @@ class Env(env.EnvironmentBase):
 		goal = math.exp(-0.5*l*l)
 		effort = math.exp(-1.0e-2*t*t)
 		# print "Goal:", goal, "Effort:", effort
-		return 1.0e02*goal-1.0e-4*t*t
+		return 1.0e02*goal-1.0e-3*t*t
 	def state(self):
 		#
 		# State of skeleton
@@ -103,7 +103,7 @@ class Env(env.EnvironmentBase):
 		# other bodies state
 		bodies = []
 		# bodies = ['left_arm', 'right_arm', 'left_hand', 'right_hand']
-		bodies = ['left_arm', 'right_arm']
+		# bodies = ['left_arm', 'right_arm']
 		for name in bodies:
 			body = self.skel.body(name)
 			l = body.world_com() - p_trunk
@@ -111,6 +111,11 @@ class Env(env.EnvironmentBase):
 			state_skel.append(np.dot(R_trunk_inv,l))
 			state_skel.append(np.dot(R_trunk_inv,v))
 		state_skel = np.array(state_skel).flatten()
+
+		s = self.skel.states()
+		p = s[6:self.skel.ndofs]
+		v = s[self.skel.ndofs+6:]
+		state_skel = np.hstack([np.dot(R_trunk_inv,vel_trunk),p,v])
         #
 		# State of sensor
 		#
@@ -271,7 +276,7 @@ class NN(nn.NNBase):
 		self.placeholder_dropout_keep_prob = None
 		self.loss_q = None
 		self.loss_a = None
-		self.learning_rate = 1.0*1e-4
+		self.learning_rate = 1.0*1e-3
 		self.writer = None
 		self.merged = None
 	def initialize(self, data, ckpt_file=None):
@@ -288,12 +293,12 @@ class NN(nn.NNBase):
 			keep_prob = tf.placeholder(tf.float32)
 			
 			# Network definition
-			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 32)
-			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 32, 32)
-			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 32, 32, 
+			layer_1 = nn.Layer('layer_1',self.var, False, state, d, 64)
+			layer_2 = nn.Layer('layer_2',self.var, False, layer_1.h, 64, 64)
+			layer_3 = nn.Layer('layer_3',self.var, False, layer_2.h, 64, 64, 
 				dropout_enabled=True, dropout_placeholder=keep_prob)
-			layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 32, 1, None)
-			layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 32, a, None)
+			layer_q = nn.Layer('layer_q',self.var, False, layer_3.h, 64, 1, None)
+			layer_a = nn.Layer('layer_a',self.var, False, layer_3.h, 64, a, None)
 
 			layer_1_copy = layer_1.copy(state)
 			layer_2_copy = layer_2.copy(layer_1_copy.h)
@@ -448,11 +453,12 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 		else:
 			print '[DeepRL]', 'loading warmup file ...'
 			data = self.convert_warmup_file_to_buffer_data(Env(dt, skel_file), self.warmup_file)
+			print len(data), 'data were loaded'
 			self.replay_buffer['actor'].append(data,verbose=True)
 			self.replay_buffer['critic'].append(data,verbose=True)
 			self.warmup_size = self.replay_buffer['actor'].size_accum
 		num_action_trained = 0
-		for i in range(10000):
+		for i in range(2000):
 			self.train_qvalue(self.sample_size)
 			num_action_trained += self.train_action(self.sample_size)
 			if i%20==0:
@@ -476,14 +482,12 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 			env.reset()
 
 			env.world.skel.set_states(q_skel_init)
-			reward_init = env.step_forward(False,False)
 			state_init = env.state()
 
 			env.world.skel.set_states(q_skel_term)
-			reward_term = env.step_forward(False,False)
 			state_term = env.state()
 
-		 	reward = reward_term
+		 	reward = env.goodness()
 		 	action_delta = self.ac.delta(action)
 
 			t = [state_init, action_delta, [reward], state_term]
@@ -491,7 +495,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 				tuples.append(t)
 				cnt += 1
 				if cnt%5000 == 0:
-					print cnt, ' data were loaded'
+					print cnt, ' data were processed'
 		return tuples
 	def run(self, max_steps=32, verbose=True):
 		if self.is_finished_trainning():
@@ -539,6 +543,8 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
 	def step(self, full_random=False, force_critic=False):
 		state_inits = self.env.state()
 		actions = self.get_actions(state_inits)
+		for a in actions:
+			a = self.ac.clamp(a)
 		buffer_names = []
 		for i in range(self.env.num_slave):
 			buffer_name = 'critic'
@@ -684,7 +690,7 @@ myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, myAction, warmup_file)
 def gen_warmup_data_one_process(q, idx, sigma, num_episode, num_wingbeat):
 	env = EnvPoseDriven(dt, skel_file, 2)
 	con = env.skel.controller
-	act = ActionPoseDirven(13)
+	act = ActionPoseDirven(13, idx)
 	data = []
 	for ep in xrange(num_episode):
 		env.reset()
@@ -704,7 +710,7 @@ def gen_warmup_data_one_process(q, idx, sigma, num_episode, num_wingbeat):
 	q.put(data)
 
 def gen_warmup_data(sigma, num_episode=2500, num_wingbeat=20):
-	num_cores = 2 #mp.cpu_count()
+	num_cores = mp.cpu_count()
 	data = []
 	data1 = []
 	data2 = []
@@ -720,29 +726,19 @@ def gen_warmup_data(sigma, num_episode=2500, num_wingbeat=20):
 				args=(q, i, sigma, num_episode_assigned[i], num_wingbeat))
 			p.start()
 			ps.append(p)
+			time.sleep(0.1)
 	cnt = 0
 	while True:
 		d = q.get()
-		print len(d)
-		if cnt==0:
-			data1 = data1 + d
-		else:
-			data2 = data2 + d
 		data = data + d
 		cnt += 1
 		if cnt>=num_cores:
 			break
-		time.sleep(0.1)
-	for i in xrange(len(ps)):
-		ps[i].join()
-	
+	for p in ps:
+		p.join()
 
-	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque1.warmup', 'w')
-	pickle.dump(data1, f)
-	f.close()
-
-	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque2.warmup', 'w')
-	pickle.dump(data2, f)
+	f = open(str(sigma[0])+'_'+str(num_episode)+'_'+str(num_wingbeat)+'_torque.warmup', 'w')
+	pickle.dump(data, f)
 	f.close()
 
 	return data
@@ -797,6 +793,7 @@ def keyboard_callback(key):
 		while True:
 			state = myEnvi.state()
 			action = myDeepRL.get_action(state)
+			action = myAction.clamp(action)
 			qvalue = myDeepRL.get_qvalue(state)
 			reward = myEnvi.goodness()
 			myEnvi.step(action)
@@ -810,7 +807,7 @@ def keyboard_callback(key):
 	elif key == 's':
 		myNN.save(ckpt_save_dir)
 	elif key == 'w':
-		gen_warmup_data([0.2]*13, 5, 10)
+		gen_warmup_data([0.2]*13, 10, 10)
 	elif key == '0':
 		sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
 		data = myDeepRL.sample('critic', sample_idx)
