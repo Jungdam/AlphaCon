@@ -1,7 +1,9 @@
 import numpy as np
 
+
 def flatten(l):
-	return list(_flatten_(l))
+    return list(_flatten_(l))
+
 
 def _flatten_(*args):
     for x in args:
@@ -10,6 +12,12 @@ def _flatten_(*args):
                 yield y
         else:
             yield x
+
+
 def check_valid_data(data):
-	d = flatten(data)
-	return not np.isnan(d).any()
+    d = flatten(data)
+    return not np.isnan(d).any()
+
+
+def clamp(n, minn, maxn):
+    return max(min(maxn, n), minn)

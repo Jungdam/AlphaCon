@@ -33,7 +33,7 @@ warmup_file = None
 
 num_init_wingbeat = 2
 dt = 1.0/1000.0
-max_client = 16
+max_client = 8
 max_steps = 20
 
 pydart.init()

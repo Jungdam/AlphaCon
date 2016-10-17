@@ -231,23 +231,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <!-- <init_pos>0 -1.57 0.0</init_pos> -->
@@ -263,23 +278,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>10.0</damping>
+                        <damping>20.0</damping>
+                        <spring_rest_position>0.0</spring_rest_position>
+                        <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    
+                    <limit>
+                        <lower>-1.0</lower>
+                        <upper>1.0</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <!-- <init_pos>0 1.57 0</init_pos> -->
@@ -295,26 +325,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <init_pos>0 0 0</init_pos>
@@ -329,26 +371,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.0</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
+                    <limit>
+                        <lower>-0.5</lower>
+                        <upper>0.5</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <init_pos>0 0 0</init_pos>
@@ -363,38 +417,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>-0.349</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    <!-- <limit>
-                        <lower>-0.424</lower>
-                        <upper>-0.624</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>-0.549</lower>
+                        <upper>-0.149</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.349</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    <!-- <limit>
-                        <lower>0.249</lower>
-                        <upper>0.449</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>0.149</lower>
+                        <upper>0.549</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>-0.524</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    <!-- <limit>
-                        <lower>-0.249</lower>
-                        <upper>-0.449</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>-0.724</lower>
+                        <upper>-0.324</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <init_pos>-0.349 0.349 -0.524</init_pos>
@@ -410,39 +464,38 @@
                 <axis>
                     <xyz>1 0 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>0.349</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-
-                    <!-- <limit>
-                        <lower>-0.624</lower>
-                        <upper>-0.424</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>0.149</lower>
+                        <upper>0.549</upper>
+                    </limit>
                 </axis>
                 <axis2>
                     <xyz>0 1 0</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>-0.349</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    <!-- <limit>
-                        <lower>-0.249</lower>
-                        <upper>-0.449</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>-0.549</lower>
+                        <upper>-0.149</upper>
+                    </limit>
                 </axis2>
                 <axis3>
                     <xyz>0 0 1</xyz>
                     <dynamics>
-                        <damping>20.0</damping>
+                        <damping>100.0</damping>
                         <spring_rest_position>-0.524</spring_rest_position>
                         <spring_stiffness>2.0</spring_stiffness>
                     </dynamics>
-                    <!-- <limit>
-                        <lower>0.249</lower>
-                        <upper>0.449</upper>
-                    </limit> -->
+                    <limit>
+                        <lower>-0.724</lower>
+                        <upper>-0.324</upper>
+                    </limit>
                 </axis3>
                 <axis_order>zyx</axis_order>
                 <init_pos>0.349 -0.349 -0.524</init_pos>

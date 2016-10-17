@@ -1,12 +1,12 @@
 import numpy as np
 from numpy.linalg import inv
 import math
-import mmMath
 import eye
+import mmMath
 import action as ac
 
+
 class Controller:
-    """ Add damping force to the skeleton """
     def __init__(self, world, skel, eye=None):
         self.world = world
         self.skel = skel
@@ -23,10 +23,13 @@ class Controller:
         self.cnt_wingbeat = 0
         self.time = 0.0
         self.reset()
+
     def is_new_wingbeat(self):
         return self.new_wingbeat
+
     def get_num_wingbeat(self):
         return self.cnt_wingbeat
+
     def reset(self):
         self.tau_sum = 0.0
         del self.action[:]
@@ -35,6 +38,7 @@ class Controller:
         self.new_wingbeat = True
         self.cnt_wingbeat = 0
         self.time = 0.0
+
     def add_action(self, action):
         a = np.array(action)
         if not ac.check_range(a):
@@ -43,19 +47,25 @@ class Controller:
             # print 'Set', a, 'to', a_valid
             a = a_valid
         self.action.append(a)
+
     def get_tau(self):
         return self.tau
+
     def get_tau_sum(self):
         return self.tau_sum
+
     def get_eye(self):
         return self.eye
+
     def reset_tau_sum(self):
         self.tau_sum = 0.0
+
     def period_to_phase(self, e_t, period):
         if e_t <= 0.0 or period <= 0.0:
             return 0.0
         else:
-            return (2.0*math.pi) * (1.0-(period-e_t)/period)
+            return (2.0 * math.pi) * (1.0 - (period - e_t) / period)
+
     def move_func(self, axis, u_up, u_down, phase):
         theta = phase
         value = 0.0
@@ -63,29 +73,31 @@ class Controller:
             if phase >= 0.0 and phase <= math.pi:
                 value = u_down
             else:
-                value = 0.5 * (u_up-u_down) * (1-math.cos(2.0*theta)) + u_down
+                value = 0.5 * (u_up - u_down) * (1 - math.cos(2.0 * theta)) + u_down
         elif axis == 'dihedral':
-            value = 0.5 * (u_up-u_down) * (1+math.cos(theta)) + u_down
+            value = 0.5 * (u_up - u_down) * (1 + math.cos(theta)) + u_down
         return value
+
     def compute_target_pose_oneside(self, action_before, action_cur, phase):
-        alpha = min(2.0*phase/math.pi, 1.0)
+        alpha = min(2.0 * phase / math.pi, 1.0)
         a1 = self.move_func('twist', action_before[0], action_before[1], phase)
         a2 = self.move_func('sweep', action_before[2], action_before[3], phase)
         a3 = self.move_func('dihedral', action_before[4], action_before[5], phase)
         b1 = self.move_func('twist', action_cur[0], action_cur[1], phase)
         b2 = self.move_func('sweep', action_cur[2], action_cur[3], phase)
         b3 = self.move_func('dihedral', action_cur[4], action_cur[5], phase)
-        c1 = (1.0-alpha)*a1 + alpha*b1
-        c2 = (1.0-alpha)*a2 + alpha*b2
-        c3 = (1.0-alpha)*a3 + alpha*b3
+        c1 = (1.0 - alpha) * a1 + alpha * b1
+        c2 = (1.0 - alpha) * a2 + alpha * b2
+        c3 = (1.0 - alpha) * a3 + alpha * b3
         return c1, c2, c3
+
     def update_target_pose(self):
         # Generate a current target posture
         action_before = self.action[-2]
         action_cur = self.action[-1]
         time_cur = action_cur[-1]
         phase = self.period_to_phase(self.time, time_cur)
-        
+
         dqx, dqy, dqz = self.compute_target_pose_oneside(
             ac.get_left(action_before), ac.get_left(action_cur), phase)
         self.qhat["j_arm_left_x"] = self.qhat_init["j_arm_left_x"] + dqx
@@ -153,29 +165,34 @@ class Controller:
         self.tau = tau
         return tau
 
+
 class ControllerTorque:
-    """ Add damping force to the skeleton """
     def __init__(self, world, skel):
         self.world = world
         self.skel = skel
         self.h = world.dt
-        self.actuable_dofs = self.skel.ndofs-6
-        self.torque = np.zeros(self.actuable_dofs)
-        self.torque_sum = 0.0
+        self.actuable_dofs = self.skel.ndofs - 6
+        self.reset()
+
     def reset(self):
         self.torque = np.zeros(self.actuable_dofs)
         self.torque_sum = 0.0
+
     def set_torque(self, torque):
         if len(torque) != self.actuable_dofs:
             raise Exception('Controller', 'actuable dofs is not matched')
-        self.torque = torque
+        self.torque = np.array(torque)
+
     def get_torque(self):
         return self.torque
+
     def get_torque_sum(self):
-        return self.tau_sum
+        return self.torque_sum
+
     def reset_torque_sum(self):
-        self.tau_sum = 0.0
+        self.torque_sum = 0.0
+
     def compute(self):
         self.torque_sum += np.linalg.norm(self.torque)
-        t = np.hstack([np.zeros(6),self.torque])
+        t = np.hstack([np.zeros(6), self.torque])
         return t

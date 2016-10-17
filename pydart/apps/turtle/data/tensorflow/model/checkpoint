@@ -1,2 +1,2 @@
-model_checkpoint_path: "net_turtle_20160930_222235.ckpt"
-all_model_checkpoint_paths: "net_turtle_20160930_222235.ckpt"
+model_checkpoint_path: "torquenet_turtle_torque_20161012_180636.ckpt"
+all_model_checkpoint_paths: "torquenet_turtle_torque_20161012_180636.ckpt"
