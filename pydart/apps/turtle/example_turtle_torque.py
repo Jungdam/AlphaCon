@@ -168,8 +168,6 @@ class Env(env.EnvironmentBase):
         self.world.push()
         self.reset()
 
-        self.eye = eye.Eye(render_func=self.eye_render)
-        self.eye.setup_texture()
         # self.save_eye_image('test' + str(np.random.randint(15)) + '.png')
 
         # pose_lo = self.skel.q_lo
@@ -296,13 +294,13 @@ class Env(env.EnvironmentBase):
         glPopMatrix()
         print 'eye rendered'
 
-    def save_eye_image(self, file_name):
-        lock.acquire()
-        print self.skel.body('trunk').T
-        print self.target.get_pos()
-        self.eye.update(self.skel.body('trunk').T)
-        lock.release()
-        self.eye.save_image(file_name)
+    # def save_eye_image(self, file_name):
+    #     lock.acquire()
+    #     print self.skel.body('trunk').T
+    #     print self.target.get_pos()
+    #     self.eye.update(self.skel.body('trunk').T)
+    #     lock.release()
+    #     self.eye.save_image(file_name)
 
 class ActionPoseDirven(ac.ActionBase):
     def initialize(self):
@@ -410,8 +408,6 @@ class Env_Slave_Custom(env.Environment_Slave):
         elif signal == "get_world_state":
             s = self.env.world.states()
             self.q_result.put(s)
-        elif signal == "save_eye_image":
-            self.env.save_eye_image('eye' + str(self.idx) + '.png')
 
 
 class En_Master_Custom(env.Environment_Master):
@@ -420,21 +416,13 @@ class En_Master_Custom(env.Environment_Master):
 
     def set_target_pos(self, pos):
         self.run(self.num_slave * ["set_target_pos"], pos, return_data=False)
-        # for i in range(self.num_slave):
-        #     self.q_inputs[i].put(["set_target_pos", pos[i]])
 
     def get_world_state(self):
         return self.run(self.num_slave * ["get_world_state"])
 
     def set_world_state(self, state):
         self.run(self.num_slave * ["set_world_state"], state, return_data=False)
-        # for i in range(self.num_slave):
-        #     self.q_inputs[i].put(["set_world_state", state[i]])
 
-    def save_eye_image(self):
-        self.run(self.num_slave * ["save_eye_image"], return_data=False)
-        # for i in range(self.num_slave):
-        #     self.q_inputs[i].put(["save_eye_image", None])
 
 def gen_env(args):
     dt = args[0]
@@ -479,7 +467,7 @@ class NN(nn.NNBase):
             layer_1 = nn.Layer('layer_1', self.var, False, state, d, 64)
             layer_2 = nn.Layer('layer_2', self.var, False, layer_1.h, 64, 64)
             layer_3 = nn.Layer('layer_3', self.var, False, layer_2.h, 64, 64,
-                               dropout_enabled=True, dropout_placeholder=keep_prob)
+                                dropout_enabled=True, dropout_placeholder=keep_prob)
             layer_q = nn.Layer('layer_q', self.var, False,
                                layer_3.h, 64, 1, None)
             layer_a = nn.Layer('layer_a', self.var, False,
@@ -654,7 +642,8 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
                 num_action_trained = 0
         self.save_variables()
 
-    def convert_warmup_file_to_buffer_data(self, env, data=None, file_name=None):
+    def convert_warmup_file_to_buffer_data(
+            self, env, data=None, file_name=None):
         if data is None:
             f = open(file_name, 'r')
             data = pickle.load(f)
@@ -890,9 +879,10 @@ myAction = None
 myNN = None
 myEnviMaster = None
 myDeepRL = None
+myEye = None
 
 def example_init():
-    global myEnvi, myDeepRL, myAction, myNN, myEnviMaster
+    global myEnvi, myDeepRL, myAction, myNN, myEnviMaster, myEye
     myEnvi = Env(dt, skel_file)
     myAction = Action(myEnvi.skel.controller.actuable_dofs)
     myNN = NN('net_turtle_torque')
@@ -907,6 +897,8 @@ def example_init():
         Env_Slave_Custom)
 
     myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, myAction, warmup_file)
+
+    myEye = eye.Eye(render_func=myEnvi.eye_render, setup=True)
 
 
 def render_callback():

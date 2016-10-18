@@ -17,7 +17,9 @@ EPS = 1E-6
 
 
 class Eye:
-    def __init__(self, w=64, h=64, fov=120.0, near=0.5, far=10, render_func=None):
+    def __init__(
+            self, w=64, h=64, fov=120.0, near=0.5, far=10,
+            render_func=None, setup=False):
         self.w = w
         self.h = h
         self.fov = fov
@@ -30,6 +32,8 @@ class Eye:
         self.texture = None
         self.image = None
         self.setup = False
+        if setup:
+            self.setup_texture()
 
     def setup_texture(self):
         if self.setup:
@@ -150,9 +154,3 @@ class Eye:
     def set_size(self, w, h):
         self.w = w
         self.h = h
-
-    def render_callback(self):
-        # if self.world is not None:
-        #     self.world.render()
-        if self.scene is not None:
-            self.scene.render()
