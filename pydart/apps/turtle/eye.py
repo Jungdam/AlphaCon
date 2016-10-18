@@ -50,6 +50,8 @@ class Eye:
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         self.setup = True
 
+        print self.fbo, self.texture
+
     def update(self, frame=None):
         if self.render_func is None:
             return
@@ -71,18 +73,18 @@ class Eye:
         glBindFramebuffer(GL_FRAMEBUFFER, self.fbo)
         glViewport(0, 0, self.w, self.h)
         glDrawBuffer(GL_NONE)
-        try:
-            checkFramebufferStatus()
-        except Exception, err:
-            traceback.print_exc()
-            os._exit(1)
+        # try:
+        #     checkFramebufferStatus()
+        # except Exception, err:
+        #     traceback.print_exc()
+        #     os._exit(1)
         glClear(GL_DEPTH_BUFFER_BIT)
         # Projection matrix setup
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
-        gluPerspective(self.fov, self.aspect, self.near, self.far)
-        # glOrtho(-5, 5, -5, 5, self.near, self.far)
+        # gluPerspective(self.fov, self.aspect, self.near, self.far)
+        glOrtho(-5, 5, -5, 5, self.near, self.far)
         # Modelview matrix setup
         # Calcuate camera transformation from current frame
         glMatrixMode(GL_MODELVIEW)
@@ -96,7 +98,8 @@ class Eye:
         glTranslatef(p[0], p[1], p[2])
         glRotatef(180.0, 0, 1, 0)
         glRotatef(mmMath.DEG * angle, axis[0], axis[1], axis[2])
-        self.render_func()
+        if self.render_func is not None:
+            self.render_func()
         glPopMatrix()
 
         glMatrixMode(GL_PROJECTION)
@@ -147,3 +150,9 @@ class Eye:
     def set_size(self, w, h):
         self.w = w
         self.h = h
+
+    def render_callback(self):
+        # if self.world is not None:
+        #     self.world.render()
+        if self.scene is not None:
+            self.scene.render()

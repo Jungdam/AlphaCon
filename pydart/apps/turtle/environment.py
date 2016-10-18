@@ -46,13 +46,13 @@ class Environment_Slave(mp.Process):
         self.q_input = q_input
         self.q_result = q_result
         self.idx = idx
-        self.proc_name = mp.current_process().name
-        print self.proc_name, idx, 'Hello!'
 
     def error(self, msg):
         print "[Environment_Slave] error -", self.proc_name, idx, msg
 
     def run(self):
+        self.proc_name = mp.current_process().name
+        print self.proc_name, self.idx, 'Hello!'
         while True:
             if self.q_input.empty():
                 time.sleep(self.response_time)
@@ -93,8 +93,7 @@ class Environment_Master:
             slave.start()
 
     def __del__(self):
-        for s in self.slaves:
-            s.terminate()
+        self.run(self.num_slave * ["terminate"])
 
     def check_empty_result(self):
         for q in self.q_results:
@@ -103,20 +102,23 @@ class Environment_Master:
                 return False
         return True
 
-    def run(self, signals, data=None):
-        result = []
+    def run(self, signals, data_in=None, return_data=True):
         if not self.check_empty_result():
-            return result
+            print 'Result queue is not empty... something wrong...'
+            return None
         for i in range(self.num_slave):
-            if data is not None:
-                self.q_inputs[i].put([signals[i], data[i]])
+            if data_in is not None:
+                self.q_inputs[i].put([signals[i], data_in[i]])
             else:
                 self.q_inputs[i].put([signals[i], None])
-        for q in self.q_results:
-            while q.empty():
-                continue
-            result.append(q.get())
-        return result
+        if return_data:
+            result = []
+            for q in self.q_results:
+                while q.empty():
+                    continue
+                result.append(q.get())
+            return result
+        return None
 
     def state(self):
         return self.run(self.num_slave * ["state"])
@@ -131,5 +133,4 @@ class Environment_Master:
         if idx is not None:
             self.q_inputs[idx].put(["reset", None])
         else:
-            for q in self.q_inputs:
-                q.put(["reset", None])
+            self.run(self.num_slave * ["reset"], return_data=False)

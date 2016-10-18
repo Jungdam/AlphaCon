@@ -21,9 +21,11 @@ def ACOS(x):
     elif x < -1.0:  return math.pi
     else:           return math.acos(x)
 
+
 def I_SO3():
     return _I_SO3.copy()
-    
+
+
 def I_SE3():
     return _I_SE3.copy()
 

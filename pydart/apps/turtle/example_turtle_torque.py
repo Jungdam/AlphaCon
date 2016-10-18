@@ -39,11 +39,13 @@ dt = 1.0 / 1000.0
 max_client = 8
 max_steps = 500
 
+gl_init = False
+
 pydart.init()
 print('pydart initialization OK')
 
 profile = profile.Profile()
-
+lock = mp.Lock()
 
 def preprocess_state(state):
     return state
@@ -166,10 +168,9 @@ class Env(env.EnvironmentBase):
         self.world.push()
         self.reset()
 
-        self.eye = eye.Eye(render_func=self.render)
+        self.eye = eye.Eye(render_func=self.eye_render)
         self.eye.setup_texture()
-        self.eye.update()
-        self.eye.save_image('test.png')
+        # self.save_eye_image('test' + str(np.random.randint(15)) + '.png')
 
         # pose_lo = self.skel.q_lo
         # pose_hi = self.skel.q_hi
@@ -200,7 +201,7 @@ class Env(env.EnvironmentBase):
 
         t = np.linalg.norm(self.skel.controller.get_torque())
         effort = t * t
-        effort_w = -1.0e-7
+        effort_w = -1.0e-5
 
         pose_lo = self.skel.q_lo
         pose_hi = self.skel.q_hi
@@ -285,6 +286,23 @@ class Env(env.EnvironmentBase):
         glutSolidSphere(0.25, 10, 10)
         glPopMatrix()
 
+    def eye_render(self):
+        # glDisable(GL_LIGHTING)
+        glColor3d(1.0, 0.0, 0.0)
+        p = self.target.get_pos()
+        glPushMatrix()
+        glTranslated(p[0], p[1], p[2])
+        glutSolidSphere(0.25, 10, 10)
+        glPopMatrix()
+        print 'eye rendered'
+
+    def save_eye_image(self, file_name):
+        lock.acquire()
+        print self.skel.body('trunk').T
+        print self.target.get_pos()
+        self.eye.update(self.skel.body('trunk').T)
+        lock.release()
+        self.eye.save_image(file_name)
 
 class ActionPoseDirven(ac.ActionBase):
     def initialize(self):
@@ -373,17 +391,7 @@ class EnvPoseDriven(env.EnvironmentBase):
         return self.goodness()
 
     def render(self):
-        if self.world is not None:
-            glEnable(GL_LIGHTING)
-            # glPolygonMode( GL_FRONT_AND_BACK, GL_LINE )
-            self.world.render()
-            glDisable(GL_LIGHTING)
-        glColor3d(1.0, 0.0, 0.0)
-        p = self.target.get_pos()
-        glPushMatrix()
-        glTranslated(p[0], p[1], p[2])
-        glutSolidSphere(0.25, 10, 10)
-        glPopMatrix()
+        return
 
 
 class Env_Slave_Custom(env.Environment_Slave):
@@ -402,6 +410,8 @@ class Env_Slave_Custom(env.Environment_Slave):
         elif signal == "get_world_state":
             s = self.env.world.states()
             self.q_result.put(s)
+        elif signal == "save_eye_image":
+            self.env.save_eye_image('eye' + str(self.idx) + '.png')
 
 
 class En_Master_Custom(env.Environment_Master):
@@ -409,16 +419,22 @@ class En_Master_Custom(env.Environment_Master):
         return self.run(self.num_slave * ["get_target_pos"])
 
     def set_target_pos(self, pos):
-        for i in range(self.num_slave):
-            self.q_inputs[i].put(["set_target_pos", pos[i]])
+        self.run(self.num_slave * ["set_target_pos"], pos, return_data=False)
+        # for i in range(self.num_slave):
+        #     self.q_inputs[i].put(["set_target_pos", pos[i]])
 
     def get_world_state(self):
         return self.run(self.num_slave * ["get_world_state"])
 
     def set_world_state(self, state):
-        for i in range(self.num_slave):
-            self.q_inputs[i].put(["set_world_state", state[i]])
+        self.run(self.num_slave * ["set_world_state"], state, return_data=False)
+        # for i in range(self.num_slave):
+        #     self.q_inputs[i].put(["set_world_state", state[i]])
 
+    def save_eye_image(self):
+        self.run(self.num_slave * ["save_eye_image"], return_data=False)
+        # for i in range(self.num_slave):
+        #     self.q_inputs[i].put(["save_eye_image", None])
 
 def gen_env(args):
     dt = args[0]
@@ -613,7 +629,7 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
             print '[DeepRL]', 'generating warmup data ...'
             warmup_data = self.convert_warmup_file_to_buffer_data(
                 Env(dt, skel_file),
-                gen_warmup_data([0.1] * 13, 50, 10, 0.01, False))
+                gen_warmup_data([0.1] * 13, 30, 10, 0.01, False))
             print len(warmup_data), 'data were generated'
         else:
             print '[DeepRL]', 'loading warmup file ...'
@@ -868,27 +884,38 @@ class DeepRL_Multicore(deepRL.DeepRLBase):
     def save_variables(self):
         self.nn.save_variables()
 
-myEnvi = Env(dt, skel_file)
-myAction = Action(myEnvi.skel.controller.actuable_dofs)
-myNN = NN('net_turtle_torque')
-myNN.initialize(
-    [len(myEnvi.state()), myAction.dim],
-    ckpt_load_dir)
 
-myEnviMaster = En_Master_Custom(
-    max_client,
-    gen_env,
-    [dt, skel_file],
-    Env_Slave_Custom)
+myEnvi = None
+myAction = None
+myNN = None
+myEnviMaster = None
+myDeepRL = None
 
-myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, myAction, warmup_file)
+def example_init():
+    global myEnvi, myDeepRL, myAction, myNN, myEnviMaster
+    myEnvi = Env(dt, skel_file)
+    myAction = Action(myEnvi.skel.controller.actuable_dofs)
+    myNN = NN('net_turtle_torque')
+    myNN.initialize(
+        [len(myEnvi.state()), myAction.dim],
+        ckpt_load_dir)
 
+    myEnviMaster = En_Master_Custom(
+        max_client,
+        gen_env,
+        [dt, skel_file],
+        Env_Slave_Custom)
 
-def step_callback():
-    return
+    myDeepRL = DeepRL_Multicore(myEnviMaster, myNN, myAction, warmup_file)
 
 
 def render_callback():
+    global gl_init, myEnvi, myDeepRL
+    if not gl_init:
+        gl_init = True
+        example_init()
+    if myEnvi is None or myDeepRL is None:
+        return
     gl_render.render_ground(color=[0.3, 0.3, 0.3], axis='x')
     gl_render.render_ground(color=[0.3, 0.3, 0.3], axis='y')
     gl_render.render_ground(color=[0.3, 0.3, 0.3], axis='z')
@@ -906,7 +933,11 @@ def render_callback():
 
 
 def keyboard_callback(key):
+    if myEnvi is None or myDeepRL is None:
+        return
     if key == 'r':
+        print 'Key[r]: reset environment'
+        global elapsed_time
         myEnvi.reset()
         elapsed_time = 0.0
     elif key == 't':
@@ -932,7 +963,6 @@ def keyboard_callback(key):
                 print 'S:', state, 'A:', action, 'R:', reward
                 break
     elif key == ' ':
-        global elapsed_time
         elapsed = 0.0
         while True:
             state = myEnvi.state()
@@ -951,11 +981,20 @@ def keyboard_callback(key):
                 myEnvi.goodness(True)
                 break
     elif key == 'd':
+        print 'Key[d]: train ', not flag['Train']
         flag['Train'] = not flag['Train']
         print 'Train: ', flag['Train']
     elif key == 's':
+        print 'Key[s]: save check point file'
         myNN.save(ckpt_save_dir)
+    elif key == 'i':
+        print 'Key[i]: save eye image'
+        myEnvi.eye.update(myEnvi.skel.body('trunk').T)
+        myEnvi.eye.save_image('test.png')
+        myEnviMaster.reset()
+        myEnviMaster.save_eye_image()
     elif key == 'w':
+        print 'Key[w]: generate warmup data'
         gen_warmup_data([0.2] * 13, 100, 10)
     elif key == '0':
         sample_idx = myDeepRL.replay_buffer['critic'].sample_idx(10)
@@ -964,6 +1003,7 @@ def keyboard_callback(key):
     else:
         return False
     return True
+
 
 
 pydart.glutgui.glutgui_base.run(
